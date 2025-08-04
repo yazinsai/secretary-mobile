@@ -1,50 +1,123 @@
-# Welcome to your Expo app 👋
+# Secretary - Voice Recording App
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+A simple voice recording app with offline support and webhook integration built with Expo React Native.
 
-## Get started
+## Features
 
-1. Install dependencies
+- 📱 Simple recording interface with a big record button
+- 🎙️ High-quality audio recording with expo-audio
+- 📝 Automatic transcription using Groq API
+- 🔄 Offline queue with automatic sync
+- 🪝 Webhook integration for remote processing
+- 📋 Recording history with playback
+- ⚙️ Configurable settings
 
+## Setup
+
+1. Install dependencies:
    ```bash
    npm install
    ```
 
-2. Start the app
+2. Create a Supabase project at https://supabase.com
 
+3. Set up Supabase Storage:
+   - Go to your Supabase dashboard
+   - Navigate to Storage section
+   - Click "New bucket"
+   - Name it `recordings`
+   - Set it as a **public** bucket
+   - **IMPORTANT**: Uncheck "Enable Row Level Security (RLS)" or configure RLS policies (see below)
+   - Click "Create bucket"
+   
+   **Option A - Disable RLS (Easier):**
+   - After creating the bucket, click on it
+   - Go to "Configuration" tab
+   - Toggle OFF "Enable RLS"
+   
+   **Option B - Configure RLS Policies:**
+   - Click on the bucket
+   - Go to "Policies" tab
+   - Create a new policy:
+     - Name: `Allow all uploads`
+     - Operation: `INSERT`
+     - Policy: `true` (allows all inserts)
+   - Create another policy:
+     - Name: `Allow public reads`
+     - Operation: `SELECT`
+     - Policy: `true` (allows all reads)
+
+4. Get your Supabase credentials:
+   - In your Supabase dashboard, go to Settings > API
+   - Copy your `Project URL` (looks like `https://xxxxx.supabase.co`)
+   - Copy your `anon public` key
+   
+   **If your project has RLS enabled or doesn't allow anonymous access:**
+   - Also copy your `service_role` key (under "Service role key - secret")
+   - ⚠️ **WARNING**: The service role key bypasses all RLS. Keep it secure and never expose it in client-side code!
+
+5. Get a Groq API key:
+   - Sign up at https://console.groq.com
+   - Create an API key in the dashboard
+
+6. Configure the app:
+   - Open the Secretary app
+   - Go to Settings tab
+   - Enter your Groq API key
+   - Enter your Supabase URL and anon key
+   - If your Supabase has RLS enabled, also enter the service role key
+   - Enter your webhook URL (optional)
+   - Save settings
+
+7. Start the development server:
    ```bash
    npx expo start
    ```
 
-In the output, you'll find options to open the app in a
+## Webhook Payload
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
+When a recording is processed, the following JSON payload is sent to your webhook:
 
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
-
-```bash
-npm run reset-project
+```json
+{
+  "id": "recording_123456789_abc",
+  "timestamp": "2024-01-01T12:00:00.000Z",
+  "duration": 45.3,
+  "transcript": "The transcribed text from Groq",
+  "correctedTranscript": "The transcribed text from Groq",
+  "audioUrl": "https://your-project.supabase.co/storage/v1/object/public/recordings/recording_123456789_abc.m4a"
+}
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+## Development
 
-## Learn more
+- `app/` - Main application screens
+- `components/` - Reusable UI components
+- `services/` - API and service integrations
+- `hooks/` - Custom React hooks
+- `types/` - TypeScript type definitions
 
-To learn more about developing your project with Expo, look at the following resources:
+## Troubleshooting
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+### "Bucket not found" error
+Make sure you've created the `recordings` bucket in your Supabase Storage dashboard.
 
-## Join the community
+### "Row-level security policy" error
+This means RLS is enabled on your bucket. Either:
+1. Disable RLS on the bucket (easier)
+2. Add INSERT and SELECT policies that allow uploads and reads
 
-Join our community of developers creating universal apps.
+### Recordings not uploading
+1. Check your internet connection
+2. Verify your Supabase credentials are correct
+3. Ensure the `recordings` bucket exists and RLS is properly configured
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+### Transcription not working
+1. Verify your Groq API key is valid
+2. Check that the audio file is not corrupted
+3. Ensure you have credits/quota remaining on your Groq account
+
+## Building
+
+Follow the Expo documentation for building standalone apps:
+https://docs.expo.dev/build/introduction/

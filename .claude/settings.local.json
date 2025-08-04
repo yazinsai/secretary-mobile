@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:console.groq.com)",
+      "WebFetch(domain:groq.com)",
+      "Bash(rm:*)",
+      "Bash(npm install:*)",
+      "Bash(mkdir:*)",
+      "WebFetch(domain:saleksovski.github.io)",
+      "WebFetch(domain:dev.to)",
+      "Bash(npm start)"
+    ],
+    "deny": []
+  }
+}
