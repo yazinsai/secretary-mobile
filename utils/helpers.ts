@@ -1,7 +1,8 @@
 import { Recording } from '@/types';
+import { v4 as uuidv4 } from 'uuid';
 
 export function generateRecordingId(): string {
-  return `recording_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  return uuidv4();
 }
 
 export function formatDuration(seconds: number): string {

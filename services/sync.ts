@@ -105,7 +105,7 @@ class SyncService {
         id: recording.id,
         user_id: user.id,
         timestamp: recording.timestamp.toISOString(),
-        duration: recording.duration,
+        duration: Math.round(recording.duration),
         audio_url: recording.fileUri.startsWith('http') ? recording.fileUri : null,
         transcript: recording.transcript || null,
         corrected_transcript: recording.correctedTranscript || null,

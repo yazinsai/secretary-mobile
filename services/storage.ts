@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Recording, Settings } from '@/types';
 import { STORAGE_KEYS, DEFAULT_SETTINGS } from '@/utils/constants';
+import { v4 as uuidv4 } from 'uuid';
 
 class StorageService {
   async getSettings(): Promise<Settings> {
@@ -36,6 +37,25 @@ class StorageService {
       if (!data) return [];
       
       const recordings = JSON.parse(data);
+      
+      // Check if migration is needed
+      const needsMigration = recordings.some((r: any) => 
+        r.id && !this.isValidUUID(r.id)
+      );
+      
+      if (needsMigration) {
+        await this.migrateRecordingIds(recordings);
+        // Re-read the migrated data
+        const migratedData = await AsyncStorage.getItem(STORAGE_KEYS.RECORDINGS);
+        return JSON.parse(migratedData || '[]').map((r: any) => ({
+          ...r,
+          timestamp: new Date(r.timestamp),
+          title: r.title || 'Untitled Recording',
+          syncStatus: r.syncStatus || 'local',
+          webhookLastSentAt: r.webhookLastSentAt ? new Date(r.webhookLastSentAt) : undefined,
+        }));
+      }
+      
       return recordings.map((r: any) => ({
         ...r,
         timestamp: new Date(r.timestamp),
@@ -48,6 +68,45 @@ class StorageService {
       console.error('Failed to load recordings:', error);
       return [];
     }
+  }
+
+  private isValidUUID(uuid: string): boolean {
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    return uuidRegex.test(uuid);
+  }
+
+  private async migrateRecordingIds(recordings: any[]): Promise<void> {
+    console.log('Migrating recording IDs to UUID format...');
+    let migratedCount = 0;
+    
+    // Generate new UUIDs only for recordings that haven't been uploaded
+    const migratedRecordings = recordings.map((r: any) => {
+      if (!this.isValidUUID(r.id)) {
+        // Check if recording has been uploaded to storage
+        const isUploaded = r.status === 'uploaded' || 
+                          (r.fileUri && typeof r.fileUri === 'string' && r.fileUri.startsWith('http'));
+        
+        if (isUploaded) {
+          // Keep original ID for uploaded recordings to maintain storage reference
+          console.log(`Keeping original ID for uploaded recording: ${r.id}`);
+          return r;
+        } else {
+          // Generate new UUID for local recordings
+          const newId = uuidv4();
+          migratedCount++;
+          console.log(`Migrating recording ${r.id} to ${newId}`);
+          return { ...r, id: newId, syncStatus: 'local' };
+        }
+      }
+      return r;
+    });
+    
+    await AsyncStorage.setItem(
+      STORAGE_KEYS.RECORDINGS,
+      JSON.stringify(migratedRecordings)
+    );
+    
+    console.log(`Migrated ${migratedCount} recording IDs to UUID format`);
   }
 
   async saveRecording(recording: Recording): Promise<void> {
