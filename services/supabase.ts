@@ -2,7 +2,6 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import * as FileSystem from 'expo-file-system';
 import { Recording, WebhookPayload } from '@/types';
 import { userSettingsService } from './userSettings';
-import { groqService } from './groq';
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from '@/config/supabase.config';
 
 class SupabaseService {
@@ -94,42 +93,6 @@ class SupabaseService {
     }
   }
 
-  async uploadAndProcessRecording(recording: Recording): Promise<void> {
-    try {
-      const settings = await userSettingsService.getSettings();
-      
-      // Upload audio to Supabase
-      const audioUrl = await this.uploadAudio(recording);
-      
-      // Transcribe and process with Groq
-      const { transcript, correctedTranscript, title } = await groqService.transcribeAndProcess(recording.fileUri);
-      
-      // Update recording with transcript and title
-      await storageService.updateRecording(recording.id, {
-        transcript,
-        correctedTranscript,
-        title,
-      });
-      
-      // Prepare webhook payload
-      const webhookPayload: WebhookPayload = {
-        id: recording.id,
-        timestamp: recording.timestamp.toISOString(),
-        duration: recording.duration,
-        transcript,
-        correctedTranscript: transcript,
-        audioUrl,
-      };
-      
-      // Send to webhook
-      if (settings.webhookUrl) {
-        await this.sendWebhook(settings.webhookUrl, webhookPayload);
-      }
-    } catch (error) {
-      console.error('Failed to process recording:', error);
-      throw error;
-    }
-  }
 
   async sendWebhook(url: string, payload: WebhookPayload): Promise<void> {
     try {

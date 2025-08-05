@@ -66,8 +66,12 @@ class SyncService {
           // Import groqService dynamically to avoid circular dependency
           const { groqService } = await import('./groq');
           
+          // Get current user ID
+          const client = await supabaseService.getClient();
+          const { data: { user } } = await client.auth.getUser();
+          
           // Process transcript to get title and corrections
-          const processed = await groqService.processTranscript(recording.transcript);
+          const processed = await groqService.processTranscript(recording.transcript, user?.id);
           
           // Update local recording with processed data
           await storageService.updateRecording(recording.id, {

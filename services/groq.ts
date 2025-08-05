@@ -1,6 +1,4 @@
 import * as FileSystem from 'expo-file-system';
-import { userSettingsService } from './userSettings';
-import { supabaseService } from './supabase';
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from '@/config/supabase.config';
 
 interface TranscriptionResult {
@@ -47,13 +45,8 @@ class GroqService {
     }
   }
 
-  async processTranscript(transcript: string): Promise<TranscriptionResult> {
+  async processTranscript(transcript: string, userId?: string): Promise<TranscriptionResult> {
     try {
-
-      // Get current user ID
-      const client = await supabaseService.getAuthClient();
-      const { data: { user } } = await client.auth.getUser();
-
       // Call Supabase Edge Function
       const response = await fetch(`${SUPABASE_URL}/functions/v1/process-transcript`, {
         method: 'POST',
@@ -63,7 +56,7 @@ class GroqService {
         },
         body: JSON.stringify({
           transcript,
-          userId: user?.id,
+          userId,
         }),
       });
 
@@ -90,9 +83,9 @@ class GroqService {
     }
   }
 
-  async transcribeAndProcess(fileUri: string): Promise<TranscriptionResult> {
+  async transcribeAndProcess(fileUri: string, userId?: string): Promise<TranscriptionResult> {
     const transcript = await this.transcribeAudio(fileUri);
-    return await this.processTranscript(transcript);
+    return await this.processTranscript(transcript, userId);
   }
 }
 

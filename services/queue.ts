@@ -1,11 +1,13 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import NetInfo from '@react-native-community/netinfo';
 import Toast from 'react-native-toast-message';
-import { Recording, QueueItem } from '@/types';
+import { Recording, QueueItem, WebhookPayload } from '@/types';
 import { STORAGE_KEYS, MAX_RETRY_COUNT } from '@/utils/constants';
 import { getExponentialBackoffDelay } from '@/utils/helpers';
 import { storageService } from './storage';
 import { supabaseService } from './supabase';
+import { groqService } from './groq';
+import { userSettingsService } from './userSettings';
 
 class QueueService {
   private isProcessing = false;
@@ -90,7 +92,40 @@ class QueueService {
           await storageService.updateRecording(recording.id, { status: 'uploading' });
           
           // Upload to Supabase and process
-          await supabaseService.uploadAndProcessRecording(recording);
+          // Get current user for Groq processing
+          const client = await supabaseService.getAuthClient();
+          const { data: { user } } = await client.auth.getUser();
+          
+          // Upload audio to Supabase
+          const audioUrl = await supabaseService.uploadAudio(recording);
+          
+          // Transcribe and process with Groq
+          const { transcript, correctedTranscript, title } = await groqService.transcribeAndProcess(recording.fileUri, user?.id);
+          
+          // Update recording with transcript and title
+          await storageService.updateRecording(recording.id, {
+            transcript,
+            correctedTranscript,
+            title,
+          });
+          
+          // Get settings for webhook
+          const settings = await userSettingsService.getSettings();
+          
+          // Prepare webhook payload
+          const webhookPayload: WebhookPayload = {
+            id: recording.id,
+            timestamp: recording.timestamp.toISOString(),
+            duration: recording.duration,
+            transcript,
+            correctedTranscript: correctedTranscript || transcript,
+            audioUrl,
+          };
+          
+          // Send to webhook
+          if (settings.webhookUrl) {
+            await supabaseService.sendWebhook(settings.webhookUrl, webhookPayload);
+          }
           
           await storageService.updateRecording(recording.id, { 
             status: 'uploaded',
