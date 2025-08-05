@@ -21,16 +21,9 @@ class GroqService {
       // Create form data
       const formData = new FormData();
       
-      // Create a blob from base64
-      const byteCharacters = atob(base64Audio);
-      const byteNumbers = new Array(byteCharacters.length);
-      for (let i = 0; i < byteCharacters.length; i++) {
-        byteNumbers[i] = byteCharacters.charCodeAt(i);
-      }
-      const byteArray = new Uint8Array(byteNumbers);
-      const blob = new Blob([byteArray], { type: 'audio/mp4' });
-      
-      formData.append('file', blob, 'audio.m4a');
+      // For Edge Functions, we need to send the base64 data
+      formData.append('file', base64Audio);
+      formData.append('filename', 'audio.m4a');
 
       // Call Supabase Edge Function
       const response = await fetch(`${SUPABASE_URL}/functions/v1/transcribe-audio`, {

@@ -12,14 +12,19 @@ serve(async (req) => {
     return new Response('ok', { headers: corsHeaders })
   }
 
+  let transcript = ''
+  
   try {
     const groqApiKey = Deno.env.get('GROQ_API_KEY')
+    console.log('GROQ_API_KEY exists:', !!groqApiKey)
     if (!groqApiKey) {
       throw new Error('GROQ_API_KEY not configured')
     }
 
     // Get request body
-    const { transcript, userId } = await req.json()
+    const body = await req.json()
+    transcript = body.transcript
+    const userId = body.userId
     
     if (!transcript) {
       throw new Error('No transcript provided')
@@ -66,7 +71,7 @@ Return JSON in this exact format:
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'llama-3.1-70b-versatile',
+        model: 'llama-3.3-70b-versatile',
         messages: [
           {
             role: 'system',
@@ -101,11 +106,12 @@ Return JSON in this exact format:
       }
     )
   } catch (error) {
+    console.error('Process transcript error:', error)
     return new Response(
       JSON.stringify({ 
         error: error.message,
         title: 'Untitled Recording',
-        correctedTranscript: transcript || '',
+        correctedTranscript: transcript,
       }),
       { 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },

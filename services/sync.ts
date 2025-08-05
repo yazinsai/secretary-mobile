@@ -37,7 +37,8 @@ class SyncService {
     try {
       const recordings = await storageService.getRecordings();
       const unsyncedRecordings = recordings.filter(
-        r => r.syncStatus === 'local' && r.status === 'uploaded'
+        r => (r.syncStatus === 'local' || !r.syncStatus) && 
+            (r.status === 'uploaded' || (r.status === 'local' && r.transcript))
       );
 
       for (const recording of unsyncedRecordings) {

@@ -17,17 +17,26 @@ serve(async (req) => {
       throw new Error('GROQ_API_KEY not configured')
     }
 
-    // Get the audio file from the request
+    // Get the form data
     const formData = await req.formData()
-    const audioFile = formData.get('file') as File
+    const base64Audio = formData.get('file') as string
+    const filename = formData.get('filename') as string || 'audio.m4a'
     
-    if (!audioFile) {
+    if (!base64Audio) {
       throw new Error('No audio file provided')
     }
 
+    // Convert base64 to blob
+    const binaryString = atob(base64Audio)
+    const bytes = new Uint8Array(binaryString.length)
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i)
+    }
+    const audioBlob = new Blob([bytes], { type: 'audio/mp4' })
+
     // Create form data for Groq API
     const groqFormData = new FormData()
-    groqFormData.append('file', audioFile)
+    groqFormData.append('file', audioBlob, filename)
     groqFormData.append('model', 'whisper-large-v3-turbo')
     groqFormData.append('response_format', 'json')
     groqFormData.append('language', 'en')
@@ -56,6 +65,7 @@ serve(async (req) => {
       }
     )
   } catch (error) {
+    console.error('Transcribe audio error:', error)
     return new Response(
       JSON.stringify({ error: error.message }),
       { 
