@@ -12,11 +12,14 @@ import { ThemedView } from '@/components/ThemedView';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
+import { DictionaryInput } from '@/components/ui/DictionaryInput';
 import { Settings } from '@/types';
 import { storageService } from '@/services/storage';
+import { syncService } from '@/services/sync';
 import { DEFAULT_SETTINGS } from '@/utils/constants';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { Colors, Spacing, Typography } from '@/constants/Colors';
+import Toast from 'react-native-toast-message';
 
 export default function SettingsScreen() {
   const colorScheme = useColorScheme();
@@ -148,6 +151,70 @@ export default function SettingsScreen() {
                 secureTextEntry
                 autoCapitalize="none"
                 containerStyle={{ marginBottom: 0 }}
+              />
+            </Card>
+          </Animated.View>
+
+          {/* Dictionary Configuration */}
+          <Animated.View entering={FadeInDown.delay(400)}>
+            <Card style={styles.section} animated animationDelay={400}>
+              <View style={styles.sectionHeader}>
+                <ThemedText style={styles.sectionTitle}>Dictionary</ThemedText>
+                <ThemedText style={[styles.sectionDescription, { color: theme.textSecondary }]}>
+                  Add custom terms for accurate transcription
+                </ThemedText>
+              </View>
+              
+              <DictionaryInput
+                value={settings.dictionary || []}
+                onChange={(dictionary) => updateSetting('dictionary', dictionary)}
+                placeholder="Add a term..."
+              />
+            </Card>
+          </Animated.View>
+
+          {/* Webhook Actions */}
+          <Animated.View entering={FadeInDown.delay(500)}>
+            <Card style={styles.section} animated animationDelay={500}>
+              <View style={styles.sectionHeader}>
+                <ThemedText style={styles.sectionTitle}>Webhook Actions</ThemedText>
+                <ThemedText style={[styles.sectionDescription, { color: theme.textSecondary }]}>
+                  Manage webhook delivery for recordings
+                </ThemedText>
+              </View>
+              
+              <Button
+                onPress={async () => {
+                  try {
+                    const result = await syncService.resendAllFailedWebhooks();
+                    if (result.successCount > 0 || result.failCount > 0) {
+                      Toast.show({
+                        type: 'info',
+                        text1: 'Webhook Resend Complete',
+                        text2: `Success: ${result.successCount}, Failed: ${result.failCount}`,
+                        position: 'top',
+                        visibilityTime: 3000,
+                      });
+                    } else {
+                      Toast.show({
+                        type: 'info',
+                        text1: 'No failed webhooks found',
+                        position: 'top',
+                        visibilityTime: 2000,
+                      });
+                    }
+                  } catch (error) {
+                    Toast.show({
+                      type: 'error',
+                      text1: 'Failed to resend webhooks',
+                      position: 'top',
+                      visibilityTime: 3000,
+                    });
+                  }
+                }}
+                title="Resend Failed Webhooks"
+                variant="secondary"
+                size="medium"
               />
             </Card>
           </Animated.View>

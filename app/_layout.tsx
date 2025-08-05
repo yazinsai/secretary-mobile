@@ -9,6 +9,7 @@ import Toast from 'react-native-toast-message';
 
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { queueService } from '@/services/queue';
+import { syncService } from '@/services/sync';
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
@@ -17,11 +18,13 @@ export default function RootLayout() {
   });
 
   useEffect(() => {
-    // Initialize queue service
+    // Initialize services
     queueService.initialize();
+    syncService.initialize();
     
     return () => {
       queueService.destroy();
+      syncService.destroy();
     };
   }, []);
 

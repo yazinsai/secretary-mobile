@@ -6,7 +6,15 @@ class StorageService {
   async getSettings(): Promise<Settings> {
     try {
       const data = await AsyncStorage.getItem(STORAGE_KEYS.SETTINGS);
-      return data ? JSON.parse(data) : DEFAULT_SETTINGS;
+      if (!data) return DEFAULT_SETTINGS;
+      
+      const settings = JSON.parse(data);
+      // Ensure dictionary exists for backward compatibility
+      if (!settings.dictionary) {
+        settings.dictionary = [];
+      }
+      
+      return settings;
     } catch (error) {
       console.error('Failed to load settings:', error);
       return DEFAULT_SETTINGS;
@@ -31,6 +39,10 @@ class StorageService {
       return recordings.map((r: any) => ({
         ...r,
         timestamp: new Date(r.timestamp),
+        // Ensure new fields exist for backward compatibility
+        title: r.title || 'Untitled Recording',
+        syncStatus: r.syncStatus || 'local',
+        webhookLastSentAt: r.webhookLastSentAt ? new Date(r.webhookLastSentAt) : undefined,
       }));
     } catch (error) {
       console.error('Failed to load recordings:', error);

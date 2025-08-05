@@ -23,6 +23,7 @@ import { Card } from '@/components/ui/Card';
 import { Recording } from '@/types';
 import { storageService } from '@/services/storage';
 import { audioService } from '@/services/audio';
+import { syncService } from '@/services/sync';
 import { formatDate, formatDuration } from '@/utils/helpers';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { Colors, Spacing, BorderRadius, Typography, Shadows } from '@/constants/Colors';
@@ -152,6 +153,53 @@ export default function RecordingsScreen() {
     );
   }, [playingId]);
 
+  const handleLongPress = useCallback((recording: Recording) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    
+    const actions = [];
+    
+    // Add resend webhook option if webhook failed
+    if (recording.webhookStatus === 'failed' && recording.transcript) {
+      actions.push({
+        text: 'Resend Webhook',
+        onPress: async () => {
+          try {
+            await syncService.resendWebhook(recording.id);
+            Toast.show({
+              type: 'success',
+              text1: 'Webhook Sent',
+              position: 'top',
+              visibilityTime: 2000,
+            });
+            await loadRecordings();
+          } catch (error) {
+            Toast.show({
+              type: 'error',
+              text1: 'Failed to send webhook',
+              text2: error instanceof Error ? error.message : 'Unknown error',
+              position: 'top',
+              visibilityTime: 3000,
+            });
+          }
+        },
+      });
+    }
+    
+    actions.push(
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: () => handleDelete(recording),
+      },
+      {
+        text: 'Cancel',
+        style: 'cancel',
+      }
+    );
+    
+    Alert.alert('Recording Options', undefined, actions);
+  }, [handleDelete]);
+
   const getStatusColor = (status: Recording['status']) => {
     switch (status) {
       case 'uploaded':
@@ -226,14 +274,26 @@ export default function RecordingsScreen() {
           <AnimatedPressable
             onPressIn={handlePressIn}
             onPressOut={handlePressOut}
+            onLongPress={() => handleLongPress(item)}
             style={[animatedStyle, styles.recordingItemContainer]}
           >
             <Card style={styles.recordingCard}>
               <View style={styles.recordingContent}>
                 <View style={styles.recordingInfo}>
-                  <ThemedText style={styles.recordingDate}>
+                  <ThemedText style={styles.recordingTitle} numberOfLines={1}>
+                    {item.title || 'Untitled Recording'}
+                  </ThemedText>
+                  <ThemedText style={[styles.recordingDate, { color: theme.textSecondary }]}>
                     {formatDate(item.timestamp)}
                   </ThemedText>
+                  {item.transcript && (
+                    <ThemedText 
+                      style={[styles.recordingPreview, { color: theme.textTertiary }]} 
+                      numberOfLines={2}
+                    >
+                      {item.transcript}
+                    </ThemedText>
+                  )}
                   <View style={styles.recordingMeta}>
                     <ThemedText style={[styles.recordingDuration, { color: theme.textSecondary }]}>
                       {formatDuration(item.duration)}
@@ -245,6 +305,14 @@ export default function RecordingsScreen() {
                         color={getStatusColor(item.status)}
                       />
                     </View>
+                    {item.webhookStatus && (
+                      <View 
+                        style={[
+                          styles.webhookDot, 
+                          { backgroundColor: item.webhookStatus === 'sent' ? theme.success : theme.warning }
+                        ]} 
+                      />
+                    )}
                   </View>
                 </View>
                 
@@ -347,10 +415,19 @@ const styles = StyleSheet.create({
   recordingInfo: {
     flex: 1,
   },
-  recordingDate: {
-    fontSize: Typography.sizes.base,
+  recordingTitle: {
+    fontSize: Typography.sizes.lg,
     fontWeight: Typography.weights.semibold,
     marginBottom: Spacing.xs,
+  },
+  recordingDate: {
+    fontSize: Typography.sizes.sm,
+    marginBottom: Spacing.xs,
+  },
+  recordingPreview: {
+    fontSize: Typography.sizes.sm,
+    lineHeight: Typography.sizes.sm * 1.4,
+    marginBottom: Spacing.sm,
   },
   recordingMeta: {
     flexDirection: 'row',
@@ -359,6 +436,11 @@ const styles = StyleSheet.create({
   },
   recordingDuration: {
     fontSize: Typography.sizes.sm,
+  },
+  webhookDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
   },
   statusBadge: {
     flexDirection: 'row',

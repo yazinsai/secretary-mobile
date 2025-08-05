@@ -85,13 +85,14 @@ class SupabaseService {
       // Upload audio to Supabase
       const audioUrl = await this.uploadAudio(recording);
       
-      // Transcribe with Groq
-      const transcript = await groqService.transcribeAudio(recording.fileUri);
+      // Transcribe and process with Groq
+      const { transcript, correctedTranscript, title } = await groqService.transcribeAndProcess(recording.fileUri);
       
-      // Update recording with transcript
+      // Update recording with transcript and title
       await storageService.updateRecording(recording.id, {
         transcript,
-        correctedTranscript: transcript, // No corrections, just use original
+        correctedTranscript,
+        title,
       });
       
       // Prepare webhook payload
@@ -114,7 +115,7 @@ class SupabaseService {
     }
   }
 
-  private async sendWebhook(url: string, payload: WebhookPayload): Promise<void> {
+  async sendWebhook(url: string, payload: WebhookPayload): Promise<void> {
     try {
       const response = await fetch(url, {
         method: 'POST',

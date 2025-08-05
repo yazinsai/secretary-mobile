@@ -5,9 +5,12 @@ export interface Recording {
   fileUri: string;
   transcript?: string;
   correctedTranscript?: string;
+  title?: string;
   status: 'recording' | 'local' | 'queued' | 'uploading' | 'uploaded' | 'failed';
+  syncStatus?: 'local' | 'syncing' | 'synced';
   retryCount: number;
   webhookStatus?: 'pending' | 'sent' | 'failed';
+  webhookLastSentAt?: Date;
   error?: string;
 }
 
@@ -17,6 +20,7 @@ export interface Settings {
   supabaseUrl: string;
   supabaseAnonKey: string;
   supabaseServiceKey?: string; // Optional service role key for storage operations
+  dictionary: string[];
 }
 
 export interface QueueItem {

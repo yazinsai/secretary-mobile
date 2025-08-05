@@ -31,4 +31,5 @@ export const DEFAULT_SETTINGS = {
   supabaseUrl: '',
   supabaseAnonKey: '',
   supabaseServiceKey: '',
+  dictionary: [],
 };
