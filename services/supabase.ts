@@ -1,43 +1,59 @@
-import { createClient } from '@supabase/supabase-js';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import * as FileSystem from 'expo-file-system';
 import { Recording, WebhookPayload } from '@/types';
-import { storageService } from './storage';
+import { userSettingsService } from './userSettings';
 import { groqService } from './groq';
+import { SUPABASE_URL, SUPABASE_ANON_KEY } from '@/config/supabase.config';
 
 class SupabaseService {
-  private supabaseClient: any = null;
+  private supabaseClient: SupabaseClient | null = null;
+  private authClient: SupabaseClient | null = null;
 
-  async getClient() {
-    if (!this.supabaseClient) {
-      const settings = await storageService.getSettings();
-      
-      if (!settings.supabaseUrl || (!settings.supabaseAnonKey && !settings.supabaseServiceKey)) {
-        throw new Error('Supabase configuration missing');
-      }
-
-      // Use service key if available (for storage operations without RLS)
-      // Otherwise fall back to anon key
-      const supabaseKey = settings.supabaseServiceKey || settings.supabaseAnonKey;
-
-      this.supabaseClient = createClient(
-        settings.supabaseUrl,
-        supabaseKey,
+  async getAuthClient() {
+    if (!this.authClient) {
+      this.authClient = createClient(
+        SUPABASE_URL,
+        SUPABASE_ANON_KEY,
         {
           auth: {
-            persistSession: false,
-            autoRefreshToken: false,
+            persistSession: true,
+            autoRefreshToken: true,
+            storage: {
+              getItem: async (key: string) => {
+                const AsyncStorage = (await import('@react-native-async-storage/async-storage')).default;
+                return AsyncStorage.getItem(key);
+              },
+              setItem: async (key: string, value: string) => {
+                const AsyncStorage = (await import('@react-native-async-storage/async-storage')).default;
+                return AsyncStorage.setItem(key, value);
+              },
+              removeItem: async (key: string) => {
+                const AsyncStorage = (await import('@react-native-async-storage/async-storage')).default;
+                return AsyncStorage.removeItem(key);
+              },
+            },
           }
         }
       );
     }
 
-    return this.supabaseClient;
+    return this.authClient;
+  }
+
+  async getClient() {
+    // For authenticated operations, use the auth client
+    return this.getAuthClient();
   }
 
   async uploadAudio(recording: Recording): Promise<string> {
     try {
       const client = await this.getClient();
-      const fileName = `${recording.id}.m4a`;
+      
+      // Get current user
+      const { data: { user } } = await client.auth.getUser();
+      if (!user) throw new Error('User not authenticated');
+      
+      const fileName = `${user.id}/${recording.id}.m4a`;
       
       // Read file as base64
       const base64 = await FileSystem.readAsStringAsync(recording.fileUri, {
@@ -80,7 +96,7 @@ class SupabaseService {
 
   async uploadAndProcessRecording(recording: Recording): Promise<void> {
     try {
-      const settings = await storageService.getSettings();
+      const settings = await userSettingsService.getSettings();
       
       // Upload audio to Supabase
       const audioUrl = await this.uploadAudio(recording);
@@ -117,16 +133,22 @@ class SupabaseService {
 
   async sendWebhook(url: string, payload: WebhookPayload): Promise<void> {
     try {
-      const response = await fetch(url, {
+      // Call Supabase Edge Function
+      const response = await fetch(`${SUPABASE_URL}/functions/v1/send-webhook`, {
         method: 'POST',
         headers: {
+          'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({
+          webhookUrl: url,
+          payload,
+        }),
       });
 
       if (!response.ok) {
-        throw new Error(`Webhook failed: ${response.status} ${response.statusText}`);
+        const error = await response.json();
+        throw new Error(error.error || `Webhook failed: ${response.status}`);
       }
     } catch (error) {
       console.error('Failed to send webhook:', error);
@@ -137,7 +159,12 @@ class SupabaseService {
   async deleteRecording(recordingId: string): Promise<void> {
     try {
       const client = await this.getClient();
-      const fileName = `${recordingId}.m4a`;
+      
+      // Get current user
+      const { data: { user } } = await client.auth.getUser();
+      if (!user) throw new Error('User not authenticated');
+      
+      const fileName = `${user.id}/${recordingId}.m4a`;
       
       const { error } = await client.storage
         .from('recordings')

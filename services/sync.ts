@@ -2,6 +2,7 @@ import NetInfo from '@react-native-community/netinfo';
 import { Recording } from '@/types';
 import { storageService } from './storage';
 import { supabaseService } from './supabase';
+import { userSettingsService } from './userSettings';
 
 class SyncService {
   private isSyncing = false;
@@ -87,10 +88,17 @@ class SyncService {
 
       // Get Supabase client
       const client = await supabaseService.getClient();
+      
+      // Get current user
+      const { data: { user } } = await client.auth.getUser();
+      if (!user) {
+        throw new Error('User not authenticated');
+      }
 
       // Prepare data for database
       const dbRecord = {
         id: recording.id,
+        user_id: user.id,
         timestamp: recording.timestamp.toISOString(),
         duration: recording.duration,
         audio_url: recording.fileUri.startsWith('http') ? recording.fileUri : null,
@@ -98,7 +106,7 @@ class SyncService {
         corrected_transcript: recording.correctedTranscript || null,
         title: recording.title || 'Untitled Recording',
         status: recording.status,
-        webhook_url: (await storageService.getSettings()).webhookUrl,
+        webhook_url: (await userSettingsService.getSettings()).webhookUrl,
         webhook_status: recording.webhookStatus || null,
         webhook_last_sent_at: recording.webhookLastSentAt?.toISOString() || null,
         error: recording.error || null,
@@ -136,7 +144,7 @@ class SyncService {
         throw new Error('No transcript available');
       }
 
-      const settings = await storageService.getSettings();
+      const settings = await userSettingsService.getSettings();
       if (!settings.webhookUrl) {
         throw new Error('No webhook URL configured');
       }

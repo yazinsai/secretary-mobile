@@ -27,9 +27,5 @@ export const RETRY_DELAY = 1000; // Base delay in ms, will be exponential
 
 export const DEFAULT_SETTINGS = {
   webhookUrl: '',
-  groqApiKey: '',
-  supabaseUrl: '',
-  supabaseAnonKey: '',
-  supabaseServiceKey: '',
   dictionary: [],
 };

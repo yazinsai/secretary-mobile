@@ -1,5 +1,7 @@
 import * as FileSystem from 'expo-file-system';
-import { storageService } from './storage';
+import { userSettingsService } from './userSettings';
+import { supabaseService } from './supabase';
+import { SUPABASE_URL, SUPABASE_ANON_KEY } from '@/config/supabase.config';
 
 interface TranscriptionResult {
   transcript: string;
@@ -8,15 +10,8 @@ interface TranscriptionResult {
 }
 
 class GroqService {
-  private baseUrl = 'https://api.groq.com/openai/v1';
-
   async transcribeAudio(fileUri: string): Promise<string> {
     try {
-      const settings = await storageService.getSettings();
-      
-      if (!settings.groqApiKey) {
-        throw new Error('Groq API key not configured');
-      }
 
       // Read file as base64
       const base64Audio = await FileSystem.readAsStringAsync(fileUri, {
@@ -25,31 +20,34 @@ class GroqService {
 
       // Create form data
       const formData = new FormData();
-      formData.append('file', {
-        uri: fileUri,
-        type: 'audio/mp4',
-        name: 'audio.m4a',
-      } as any);
-      formData.append('model', 'whisper-large-v3-turbo');
-      formData.append('response_format', 'json');
-      formData.append('language', 'en');
+      
+      // Create a blob from base64
+      const byteCharacters = atob(base64Audio);
+      const byteNumbers = new Array(byteCharacters.length);
+      for (let i = 0; i < byteCharacters.length; i++) {
+        byteNumbers[i] = byteCharacters.charCodeAt(i);
+      }
+      const byteArray = new Uint8Array(byteNumbers);
+      const blob = new Blob([byteArray], { type: 'audio/mp4' });
+      
+      formData.append('file', blob, 'audio.m4a');
 
-      // Send to Groq API
-      const response = await fetch(`${this.baseUrl}/audio/transcriptions`, {
+      // Call Supabase Edge Function
+      const response = await fetch(`${SUPABASE_URL}/functions/v1/transcribe-audio`, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${settings.groqApiKey}`,
+          'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
         },
         body: formData,
       });
 
       if (!response.ok) {
-        const error = await response.text();
-        throw new Error(`Transcription failed: ${error}`);
+        const error = await response.json();
+        throw new Error(error.error || 'Transcription failed');
       }
 
       const result = await response.json();
-      return result.text || '';
+      return result.transcript || '';
     } catch (error) {
       console.error('Failed to transcribe audio:', error);
       throw error;
@@ -58,63 +56,35 @@ class GroqService {
 
   async processTranscript(transcript: string): Promise<TranscriptionResult> {
     try {
-      const settings = await storageService.getSettings();
-      
-      if (!settings.groqApiKey) {
-        throw new Error('Groq API key not configured');
-      }
 
-      const dictionary = settings.dictionary || [];
-      
-      // Create prompt for title generation and correction
-      const prompt = `Given this transcript, perform two tasks:
+      // Get current user ID
+      const client = await supabaseService.getAuthClient();
+      const { data: { user } } = await client.auth.getUser();
 
-1. Generate a concise 3-5 word title that captures the main topic
-2. Correct the transcript for proper capitalization and spelling of these dictionary terms: ${dictionary.join(', ')}
-
-Transcript: "${transcript}"
-
-Return JSON in this exact format:
-{
-  "title": "Generated Title Here",
-  "corrected": "Corrected transcript here"
-}`;
-
-      const response = await fetch(`${this.baseUrl}/chat/completions`, {
+      // Call Supabase Edge Function
+      const response = await fetch(`${SUPABASE_URL}/functions/v1/process-transcript`, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${settings.groqApiKey}`,
+          'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model: 'llama-3.1-70b-versatile',
-          messages: [
-            {
-              role: 'system',
-              content: 'You are a helpful assistant that generates titles and corrects transcripts. Always return valid JSON.',
-            },
-            {
-              role: 'user',
-              content: prompt,
-            },
-          ],
-          temperature: 0.3,
-          response_format: { type: 'json_object' },
+          transcript,
+          userId: user?.id,
         }),
       });
 
       if (!response.ok) {
-        const error = await response.text();
-        throw new Error(`Processing failed: ${error}`);
+        const error = await response.json();
+        throw new Error(error.error || 'Processing failed');
       }
 
       const result = await response.json();
-      const processed = JSON.parse(result.choices[0].message.content);
 
       return {
         transcript,
-        correctedTranscript: processed.corrected || transcript,
-        title: processed.title || 'Untitled Recording',
+        correctedTranscript: result.correctedTranscript || transcript,
+        title: result.title || 'Untitled Recording',
       };
     } catch (error) {
       console.error('Failed to process transcript:', error);

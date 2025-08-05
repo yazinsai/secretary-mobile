@@ -14,8 +14,9 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { DictionaryInput } from '@/components/ui/DictionaryInput';
 import { Settings } from '@/types';
-import { storageService } from '@/services/storage';
+import { userSettingsService } from '@/services/userSettings';
 import { syncService } from '@/services/sync';
+import { useAuth } from '@/contexts/AuthContext';
 import { DEFAULT_SETTINGS } from '@/utils/constants';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { Colors, Spacing, Typography } from '@/constants/Colors';
@@ -25,6 +26,7 @@ export default function SettingsScreen() {
   const colorScheme = useColorScheme();
   const theme = Colors[colorScheme ?? 'light'];
   const insets = useSafeAreaInsets();
+  const { user, signOut } = useAuth();
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
   const [hasChanges, setHasChanges] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -35,10 +37,16 @@ export default function SettingsScreen() {
 
   const loadSettings = async () => {
     try {
-      const loadedSettings = await storageService.getSettings();
+      const loadedSettings = await userSettingsService.getSettings();
       setSettings(loadedSettings);
     } catch (error) {
       console.error('Failed to load settings:', error);
+      Toast.show({
+        type: 'error',
+        text1: 'Failed to load settings',
+        position: 'top',
+        visibilityTime: 3000,
+      });
     }
   };
 
@@ -52,7 +60,7 @@ export default function SettingsScreen() {
       setIsSaving(true);
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       
-      await storageService.saveSettings(settings);
+      await userSettingsService.saveSettings(settings);
       setHasChanges(false);
       
       Alert.alert('Success', 'Settings saved successfully');
@@ -80,26 +88,42 @@ export default function SettingsScreen() {
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.scrollContent}
         >
-          {/* API Configuration */}
+          {/* User Account */}
           <Animated.View entering={FadeInDown.delay(100)}>
             <Card style={styles.section} animated animationDelay={100}>
               <View style={styles.sectionHeader}>
-                <ThemedText style={styles.sectionTitle}>API Configuration</ThemedText>
+                <ThemedText style={styles.sectionTitle}>Account</ThemedText>
                 <ThemedText style={[styles.sectionDescription, { color: theme.textSecondary }]}>
-                  Configure your API keys for transcription
+                  {user ? user.email : 'Not logged in'}
                 </ThemedText>
               </View>
               
-              <Input
-                label="Groq API Key"
-                value={settings.groqApiKey}
-                onChangeText={(text) => updateSetting('groqApiKey', text)}
-                placeholder="Enter your Groq API key"
-                secureTextEntry
-                autoCapitalize="none"
-              />
+              {user && (
+                <Button
+                  onPress={async () => {
+                    Alert.alert(
+                      'Sign Out',
+                      'Are you sure you want to sign out?',
+                      [
+                        { text: 'Cancel', style: 'cancel' },
+                        {
+                          text: 'Sign Out',
+                          style: 'destructive',
+                          onPress: async () => {
+                            await signOut();
+                          },
+                        },
+                      ]
+                    );
+                  }}
+                  title="Sign Out"
+                  variant="secondary"
+                  size="medium"
+                />
+              )}
             </Card>
           </Animated.View>
+
 
           {/* Webhook Configuration */}
           <Animated.View entering={FadeInDown.delay(200)}>
@@ -123,41 +147,10 @@ export default function SettingsScreen() {
             </Card>
           </Animated.View>
 
-          {/* Supabase Configuration */}
-          <Animated.View entering={FadeInDown.delay(300)}>
-            <Card style={styles.section} animated animationDelay={300}>
-              <View style={styles.sectionHeader}>
-                <ThemedText style={styles.sectionTitle}>Supabase</ThemedText>
-                <ThemedText style={[styles.sectionDescription, { color: theme.textSecondary }]}>
-                  Configure your Supabase project for storage
-                </ThemedText>
-              </View>
-              
-              <Input
-                label="Project URL"
-                value={settings.supabaseUrl}
-                onChangeText={(text) => updateSetting('supabaseUrl', text)}
-                placeholder="https://your-project.supabase.co"
-                autoCapitalize="none"
-                keyboardType="url"
-                autoCorrect={false}
-              />
-              
-              <Input
-                label="Anon Key"
-                value={settings.supabaseAnonKey}
-                onChangeText={(text) => updateSetting('supabaseAnonKey', text)}
-                placeholder="Your anonymous key"
-                secureTextEntry
-                autoCapitalize="none"
-                containerStyle={{ marginBottom: 0 }}
-              />
-            </Card>
-          </Animated.View>
 
           {/* Dictionary Configuration */}
-          <Animated.View entering={FadeInDown.delay(400)}>
-            <Card style={styles.section} animated animationDelay={400}>
+          <Animated.View entering={FadeInDown.delay(300)}>
+            <Card style={styles.section} animated animationDelay={300}>
               <View style={styles.sectionHeader}>
                 <ThemedText style={styles.sectionTitle}>Dictionary</ThemedText>
                 <ThemedText style={[styles.sectionDescription, { color: theme.textSecondary }]}>
@@ -174,8 +167,8 @@ export default function SettingsScreen() {
           </Animated.View>
 
           {/* Webhook Actions */}
-          <Animated.View entering={FadeInDown.delay(500)}>
-            <Card style={styles.section} animated animationDelay={500}>
+          <Animated.View entering={FadeInDown.delay(400)}>
+            <Card style={styles.section} animated animationDelay={400}>
               <View style={styles.sectionHeader}>
                 <ThemedText style={styles.sectionTitle}>Webhook Actions</ThemedText>
                 <ThemedText style={[styles.sectionDescription, { color: theme.textSecondary }]}>

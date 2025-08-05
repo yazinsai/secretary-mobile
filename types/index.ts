@@ -16,10 +16,6 @@ export interface Recording {
 
 export interface Settings {
   webhookUrl: string;
-  groqApiKey: string;
-  supabaseUrl: string;
-  supabaseAnonKey: string;
-  supabaseServiceKey?: string; // Optional service role key for storage operations
   dictionary: string[];
 }
 
