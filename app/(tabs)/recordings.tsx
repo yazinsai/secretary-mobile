@@ -1,5 +1,5 @@
-import { StyleSheet, FlatList, View, Pressable, Alert, RefreshControl, Platform } from 'react-native';
-import { useEffect, useState, useRef, useCallback } from 'react';
+import { StyleSheet, SectionList, View, Pressable, Alert, RefreshControl, Platform } from 'react-native';
+import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Audio } from 'expo-av';
 import Animated, {
@@ -19,13 +19,12 @@ import * as Haptics from 'expo-haptics';
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
 import { IconSymbol } from '@/components/ui/IconSymbol';
-import { Card } from '@/components/ui/Card';
 import { Recording } from '@/types';
 import { storageService } from '@/services/storage';
 import { audioService } from '@/services/audio';
 import { syncService } from '@/services/sync';
 import { recordingService, MergedRecording } from '@/services/recordingService';
-import { formatDate, formatDuration } from '@/utils/helpers';
+import { formatDate, formatDuration, groupRecordingsByDate, formatTimeOnly } from '@/utils/helpers';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { Colors, Spacing, BorderRadius, Typography, Shadows } from '@/constants/Colors';
 
@@ -201,32 +200,6 @@ export default function RecordingsScreen() {
     Alert.alert('Recording Options', undefined, actions);
   }, [handleDelete]);
 
-  const getStatusColor = (status: Recording['status']) => {
-    switch (status) {
-      case 'uploaded':
-        return theme.success;
-      case 'uploading':
-        return theme.primary;
-      case 'failed':
-        return theme.error;
-      default:
-        return theme.textSecondary;
-    }
-  };
-
-  const getStatusIcon = (status: Recording['status']) => {
-    switch (status) {
-      case 'uploaded':
-        return 'checkmark.circle.fill';
-      case 'uploading':
-        return 'arrow.up.circle.fill';
-      case 'failed':
-        return 'exclamationmark.circle.fill';
-      default:
-        return 'circle.fill';
-    }
-  };
-
   const renderRightActions = (recording: MergedRecording) => {
     return (
       <Animated.View
@@ -237,7 +210,7 @@ export default function RecordingsScreen() {
           style={[styles.deleteButton, { backgroundColor: theme.error }]}
           onPress={() => handleDelete(recording)}
         >
-          <IconSymbol name="trash" size={24} color="white" />
+          <IconSymbol name="trash" size={20} color="white" />
         </Pressable>
       </Animated.View>
     );
@@ -263,7 +236,7 @@ export default function RecordingsScreen() {
 
     return (
       <Animated.View
-        entering={FadeInDown.delay(index * 50).springify()}
+        entering={FadeInDown.delay(index * 30).springify()}
         exiting={SlideOutLeft}
         layout={Layout.springify()}
       >
@@ -278,97 +251,95 @@ export default function RecordingsScreen() {
             onLongPress={() => handleLongPress(item)}
             style={[animatedStyle, styles.recordingItemContainer]}
           >
-            <Card style={styles.recordingCard}>
+            <View style={[styles.recordingCard, { backgroundColor: theme.card }]}>
+              {/* Play Button */}
+              <Pressable
+                style={[
+                  styles.playButton,
+                  { 
+                    backgroundColor: isCurrentlyPlaying ? theme.primary : theme.backgroundSecondary,
+                    opacity: !item.fileUri ? 0.5 : 1
+                  }
+                ]}
+                onPress={() => handlePlay(item)}
+                disabled={!item.fileUri}
+              >
+                <IconSymbol
+                  name={!item.fileUri ? 'play.slash.fill' : (isCurrentlyPlaying ? 'pause.fill' : 'play.fill')}
+                  size={16}
+                  color={!item.fileUri ? theme.textSecondary : (isCurrentlyPlaying ? 'white' : theme.primary)}
+                />
+              </Pressable>
+
+              {/* Content */}
               <View style={styles.recordingContent}>
-                <View style={styles.recordingInfo}>
-                  <ThemedText style={styles.recordingTitle} numberOfLines={1}>
-                    {item.title || 'Untitled Recording'}
+                <View style={styles.recordingHeader}>
+                  <ThemedText style={styles.recordingTime}>
+                    {formatTimeOnly(item.timestamp)}
                   </ThemedText>
-                  <ThemedText style={[styles.recordingDate, { color: theme.textSecondary }]}>
-                    {formatDate(item.timestamp)}
+                  <ThemedText style={[styles.recordingDuration, { color: theme.textSecondary }]}>
+                    {formatDuration(item.duration)}
                   </ThemedText>
-                  {item.transcript && (
-                    <ThemedText 
-                      style={[styles.recordingPreview, { color: theme.textSecondary }]} 
-                      numberOfLines={2}
-                    >
-                      {item.transcript}
-                    </ThemedText>
-                  )}
-                  <View style={styles.recordingMeta}>
-                    <ThemedText style={[styles.recordingDuration, { color: theme.textSecondary }]}>
-                      {formatDuration(item.duration)}
-                    </ThemedText>
-                    <View style={styles.statusBadge}>
-                      <IconSymbol
-                        name={getStatusIcon(item.status)}
-                        size={16}
-                        color={getStatusColor(item.status)}
-                      />
-                    </View>
-                    {item.webhookStatus && (
-                      <View 
-                        style={[
-                          styles.webhookDot, 
-                          { backgroundColor: item.webhookStatus === 'sent' ? theme.success : theme.warning }
-                        ]} 
-                      />
-                    )}
-                    {/* Sync status indicator */}
-                    {item.source === 'database' && (
-                      <View style={styles.sourceIndicator}>
-                        <IconSymbol
-                          name="icloud.fill"
-                          size={14}
-                          color={theme.primary}
-                        />
-                      </View>
-                    )}
-                    {item.source === 'both' && item.syncStatus === 'synced' && (
-                      <View style={styles.sourceIndicator}>
-                        <IconSymbol
-                          name="checkmark.icloud.fill"
-                          size={14}
-                          color={theme.success}
-                        />
-                      </View>
-                    )}
-                    {item.source === 'local' && item.syncStatus !== 'synced' && (
-                      <View style={styles.sourceIndicator}>
-                        <IconSymbol
-                          name="iphone"
-                          size={14}
-                          color={theme.textSecondary}
-                        />
-                      </View>
-                    )}
-                  </View>
                 </View>
                 
-                <Pressable
-                  style={[
-                    styles.playButton,
-                    { 
-                      backgroundColor: isCurrentlyPlaying ? theme.primary : theme.backgroundSecondary,
-                      opacity: !item.fileUri ? 0.5 : 1
-                    }
-                  ]}
-                  onPress={() => handlePlay(item)}
-                  disabled={!item.fileUri}
-                >
-                  <IconSymbol
-                    name={!item.fileUri ? 'play.slash.fill' : (isCurrentlyPlaying ? 'pause.fill' : 'play.fill')}
-                    size={20}
-                    color={!item.fileUri ? theme.textSecondary : (isCurrentlyPlaying ? 'white' : theme.primary)}
-                  />
-                </Pressable>
+                {item.title && (
+                  <ThemedText style={styles.recordingTitle} numberOfLines={1}>
+                    {item.title}
+                  </ThemedText>
+                )}
+                
+                {item.transcript && (
+                  <ThemedText 
+                    style={[styles.recordingTranscript, { color: theme.textSecondary }]} 
+                    numberOfLines={2}
+                  >
+                    {item.transcript}
+                  </ThemedText>
+                )}
+
+                {/* Status Indicators */}
+                <View style={styles.statusRow}>
+                  {/* Upload Status */}
+                  {item.status !== 'uploaded' && (
+                    <View style={[styles.statusBadge, { backgroundColor: theme.backgroundSecondary }]}>
+                      <IconSymbol
+                        name={item.status === 'uploading' ? 'arrow.up.circle' : 'exclamationmark.circle'}
+                        size={12}
+                        color={item.status === 'uploading' ? theme.primary : theme.error}
+                      />
+                      <ThemedText style={[styles.statusText, { color: theme.textSecondary }]}>
+                        {item.status}
+                      </ThemedText>
+                    </View>
+                  )}
+                  
+                  {/* Sync Status */}
+                  {item.source === 'database' && (
+                    <IconSymbol name="icloud.fill" size={14} color={theme.primary} />
+                  )}
+                  {item.source === 'both' && (
+                    <IconSymbol name="checkmark.icloud.fill" size={14} color={theme.success} />
+                  )}
+                  {item.source === 'local' && item.syncStatus !== 'synced' && (
+                    <IconSymbol name="iphone" size={14} color={theme.textSecondary} />
+                  )}
+                  
+                  {/* Webhook Status */}
+                  {item.webhookStatus === 'failed' && (
+                    <View style={[styles.webhookDot, { backgroundColor: theme.error }]} />
+                  )}
+                </View>
               </View>
-            </Card>
+            </View>
           </AnimatedPressable>
         </Swipeable>
       </Animated.View>
     );
   };
+
+  const sections = useMemo(() => {
+    return groupRecordingsByDate(recordings);
+  }, [recordings]);
 
   return (
     <ThemedView style={styles.container}>
@@ -398,10 +369,17 @@ export default function RecordingsScreen() {
           </ThemedText>
         </Animated.View>
       ) : (
-        <FlatList
-          data={recordings}
+        <SectionList
+          sections={sections}
           keyExtractor={(item) => item.id}
           renderItem={({ item, index }) => <RecordingItem item={item} index={index} />}
+          renderSectionHeader={({ section: { date } }) => (
+            <View style={[styles.sectionHeader, { backgroundColor: theme.background }]}>
+              <ThemedText style={[styles.sectionTitle, { color: theme.textSecondary }]}>
+                {date}
+              </ThemedText>
+            </View>
+          )}
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
@@ -411,6 +389,7 @@ export default function RecordingsScreen() {
           }
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
+          stickySectionHeadersEnabled={true}
         />
       )}
     </ThemedView>
@@ -427,82 +406,100 @@ const styles = StyleSheet.create({
   title: {
     fontSize: Typography.sizes.xxxl,
     fontWeight: Typography.weights.bold,
-    marginBottom: Spacing.xl,
+    marginBottom: Spacing.md,
     lineHeight: Typography.sizes.xxxl * 1.3,
   },
-  listContent: {
+  sectionHeader: {
     paddingHorizontal: Spacing.xl,
+    paddingVertical: Spacing.sm,
+    paddingTop: Spacing.md,
+  },
+  sectionTitle: {
+    fontSize: Typography.sizes.xs,
+    fontWeight: Typography.weights.semibold,
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+  },
+  listContent: {
     paddingBottom: Spacing.xl,
   },
   recordingItemContainer: {
-    marginBottom: Spacing.md,
+    paddingHorizontal: Spacing.xl,
+    marginBottom: Spacing.xs,
   },
   recordingCard: {
-    padding: Spacing.lg,
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: Spacing.md,
+    borderRadius: BorderRadius.md,
+  },
+  playButton: {
+    width: 36,
+    height: 36,
+    borderRadius: BorderRadius.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: Spacing.md,
   },
   recordingContent: {
+    flex: 1,
+  },
+  recordingHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    marginBottom: Spacing.xs,
   },
-  recordingInfo: {
-    flex: 1,
-  },
-  recordingTitle: {
-    fontSize: Typography.sizes.lg,
+  recordingTime: {
+    fontSize: Typography.sizes.sm,
     fontWeight: Typography.weights.semibold,
-    marginBottom: Spacing.xs,
-  },
-  recordingDate: {
-    fontSize: Typography.sizes.sm,
-    marginBottom: Spacing.xs,
-  },
-  recordingPreview: {
-    fontSize: Typography.sizes.sm,
-    lineHeight: Typography.sizes.sm * 1.4,
-    marginBottom: Spacing.sm,
-  },
-  recordingMeta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.md,
   },
   recordingDuration: {
+    fontSize: Typography.sizes.xs,
+  },
+  recordingTitle: {
+    fontSize: Typography.sizes.base,
+    fontWeight: Typography.weights.medium,
+    marginBottom: Spacing.xs,
+  },
+  recordingTranscript: {
     fontSize: Typography.sizes.sm,
+    lineHeight: Typography.sizes.sm * 1.4,
+    marginBottom: Spacing.xs,
   },
-  webhookDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
-  sourceIndicator: {
-    marginLeft: Spacing.xs,
+  statusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
   },
   statusBadge: {
     flexDirection: 'row',
     alignItems: 'center',
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 2,
+    borderRadius: BorderRadius.sm,
     gap: Spacing.xs,
   },
-  playButton: {
-    width: 48,
-    height: 48,
-    borderRadius: BorderRadius.full,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginLeft: Spacing.lg,
-    ...Shadows.sm,
+  statusText: {
+    fontSize: Typography.sizes.xs,
+    textTransform: 'capitalize',
+  },
+  webhookDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
   },
   deleteAction: {
     justifyContent: 'center',
-    marginBottom: Spacing.md,
+    marginBottom: Spacing.xs,
   },
   deleteButton: {
-    width: 80,
+    width: 70,
     height: '100%',
     alignItems: 'center',
     justifyContent: 'center',
-    borderTopRightRadius: BorderRadius.lg,
-    borderBottomRightRadius: BorderRadius.lg,
+    borderTopRightRadius: BorderRadius.md,
+    borderBottomRightRadius: BorderRadius.md,
   },
   emptyState: {
     flex: 1,

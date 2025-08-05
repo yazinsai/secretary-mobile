@@ -1,4 +1,4 @@
-import { StyleSheet, ScrollView, View, Alert, KeyboardAvoidingView, Platform } from 'react-native';
+import { StyleSheet, ScrollView, View, Alert, KeyboardAvoidingView, Platform, Pressable } from 'react-native';
 import { useState, useEffect } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, {
@@ -9,18 +9,63 @@ import Animated, {
 import * as Haptics from 'expo-haptics';
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
-import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { DictionaryInput } from '@/components/ui/DictionaryInput';
+import { IconSymbol } from '@/components/ui/IconSymbol';
 import { Settings } from '@/types';
 import { userSettingsService } from '@/services/userSettings';
 import { syncService } from '@/services/sync';
 import { useAuth } from '@/contexts/AuthContext';
 import { DEFAULT_SETTINGS } from '@/utils/constants';
 import { useColorScheme } from '@/hooks/useColorScheme';
-import { Colors, Spacing, Typography } from '@/constants/Colors';
+import { Colors, Spacing, Typography, BorderRadius } from '@/constants/Colors';
 import Toast from 'react-native-toast-message';
+
+interface SettingRowProps {
+  icon: string;
+  title: string;
+  subtitle?: string;
+  onPress?: () => void;
+  rightElement?: React.ReactNode;
+  showBorder?: boolean;
+}
+
+const SettingRow = ({ icon, title, subtitle, onPress, rightElement, showBorder = true }: SettingRowProps) => {
+  const colorScheme = useColorScheme();
+  const theme = Colors[colorScheme ?? 'light'];
+  
+  return (
+    <Pressable 
+      style={[
+        styles.settingRow, 
+        showBorder && { borderBottomColor: theme.cardBorder, borderBottomWidth: 1 }
+      ]}
+      onPress={onPress}
+      disabled={!onPress}
+    >
+      <View style={[styles.iconContainer, { backgroundColor: theme.backgroundSecondary }]}>
+        <IconSymbol name={icon} size={20} color={theme.primary} />
+      </View>
+      <View style={styles.settingContent}>
+        <ThemedText style={styles.settingTitle}>{title}</ThemedText>
+        {subtitle && (
+          <ThemedText style={[styles.settingSubtitle, { color: theme.textSecondary }]}>
+            {subtitle}
+          </ThemedText>
+        )}
+      </View>
+      {rightElement && (
+        <View style={styles.rightElement}>
+          {rightElement}
+        </View>
+      )}
+      {onPress && (
+        <IconSymbol name="chevron.right" size={16} color={theme.textSecondary} />
+      )}
+    </Pressable>
+  );
+};
 
 export default function SettingsScreen() {
   const colorScheme = useColorScheme();
@@ -30,6 +75,7 @@ export default function SettingsScreen() {
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
   const [hasChanges, setHasChanges] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [showDictionary, setShowDictionary] = useState(false);
 
   useEffect(() => {
     loadSettings();
@@ -71,6 +117,35 @@ export default function SettingsScreen() {
     }
   };
 
+  const handleResendWebhooks = async () => {
+    try {
+      const result = await syncService.resendAllFailedWebhooks();
+      if (result.successCount > 0 || result.failCount > 0) {
+        Toast.show({
+          type: 'info',
+          text1: 'Webhook Resend Complete',
+          text2: `Success: ${result.successCount}, Failed: ${result.failCount}`,
+          position: 'top',
+          visibilityTime: 3000,
+        });
+      } else {
+        Toast.show({
+          type: 'info',
+          text1: 'No failed webhooks found',
+          position: 'top',
+          visibilityTime: 2000,
+        });
+      }
+    } catch (error) {
+      Toast.show({
+        type: 'error',
+        text1: 'Failed to resend webhooks',
+        position: 'top',
+        visibilityTime: 3000,
+      });
+    }
+  };
+
   return (
     <ThemedView style={styles.container}>
       <View style={[styles.header, { paddingTop: insets.top + Spacing.md }]}>
@@ -88,128 +163,100 @@ export default function SettingsScreen() {
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.scrollContent}
         >
-          {/* User Account */}
+          {/* Account Section */}
           <Animated.View entering={FadeInDown.delay(100)}>
-            <Card style={styles.section} animated animationDelay={100}>
-              <View style={styles.sectionHeader}>
-                <ThemedText style={styles.sectionTitle}>Account</ThemedText>
-                <ThemedText style={[styles.sectionDescription, { color: theme.textSecondary }]}>
-                  {user ? user.email : 'Not logged in'}
-                </ThemedText>
-              </View>
-              
-              {user && (
-                <Button
-                  onPress={async () => {
-                    Alert.alert(
-                      'Sign Out',
-                      'Are you sure you want to sign out?',
-                      [
-                        { text: 'Cancel', style: 'cancel' },
-                        {
-                          text: 'Sign Out',
-                          style: 'destructive',
-                          onPress: async () => {
-                            await signOut();
-                          },
-                        },
-                      ]
-                    );
-                  }}
-                  title="Sign Out"
-                  variant="secondary"
-                  size="medium"
-                />
-              )}
-            </Card>
+            <ThemedText style={[styles.groupTitle, { color: theme.textSecondary }]}>
+              ACCOUNT
+            </ThemedText>
+            <View style={[styles.groupContainer, { backgroundColor: theme.card }]}>
+              <SettingRow
+                icon="person.circle"
+                title={user ? user.email! : 'Not logged in'}
+                subtitle="Manage your account"
+                showBorder={false}
+                rightElement={
+                  user && (
+                    <Button
+                      onPress={async () => {
+                        Alert.alert(
+                          'Sign Out',
+                          'Are you sure you want to sign out?',
+                          [
+                            { text: 'Cancel', style: 'cancel' },
+                            {
+                              text: 'Sign Out',
+                              style: 'destructive',
+                              onPress: async () => {
+                                await signOut();
+                              },
+                            },
+                          ]
+                        );
+                      }}
+                      title="Sign Out"
+                      variant="secondary"
+                      size="small"
+                    />
+                  )
+                }
+              />
+            </View>
           </Animated.View>
 
-
-          {/* Webhook Configuration */}
+          {/* Integration Section */}
           <Animated.View entering={FadeInDown.delay(200)}>
-            <Card style={styles.section} animated animationDelay={200}>
-              <View style={styles.sectionHeader}>
-                <ThemedText style={styles.sectionTitle}>Webhook</ThemedText>
-                <ThemedText style={[styles.sectionDescription, { color: theme.textSecondary }]}>
-                  Configure where to send your recordings
-                </ThemedText>
+            <ThemedText style={[styles.groupTitle, { color: theme.textSecondary }]}>
+              INTEGRATIONS
+            </ThemedText>
+            <View style={[styles.groupContainer, { backgroundColor: theme.card }]}>
+              <View style={styles.inputContainer}>
+                <Input
+                  label="Webhook URL"
+                  value={settings.webhookUrl}
+                  onChangeText={(text) => updateSetting('webhookUrl', text)}
+                  placeholder="https://example.com/webhook"
+                  autoCapitalize="none"
+                  keyboardType="url"
+                  autoCorrect={false}
+                  style={styles.input}
+                />
               </View>
-              
-              <Input
-                label="Webhook URL"
-                value={settings.webhookUrl}
-                onChangeText={(text) => updateSetting('webhookUrl', text)}
-                placeholder="https://example.com/webhook"
-                autoCapitalize="none"
-                keyboardType="url"
-                autoCorrect={false}
-              />
-            </Card>
-          </Animated.View>
-
-
-          {/* Dictionary Configuration */}
-          <Animated.View entering={FadeInDown.delay(300)}>
-            <Card style={styles.section} animated animationDelay={300}>
-              <View style={styles.sectionHeader}>
-                <ThemedText style={styles.sectionTitle}>Dictionary</ThemedText>
-                <ThemedText style={[styles.sectionDescription, { color: theme.textSecondary }]}>
-                  Add custom terms for accurate transcription
-                </ThemedText>
-              </View>
-              
-              <DictionaryInput
-                value={settings.dictionary || []}
-                onChange={(dictionary) => updateSetting('dictionary', dictionary)}
-                placeholder="Add a term..."
-              />
-            </Card>
-          </Animated.View>
-
-          {/* Webhook Actions */}
-          <Animated.View entering={FadeInDown.delay(400)}>
-            <Card style={styles.section} animated animationDelay={400}>
-              <View style={styles.sectionHeader}>
-                <ThemedText style={styles.sectionTitle}>Webhook Actions</ThemedText>
-                <ThemedText style={[styles.sectionDescription, { color: theme.textSecondary }]}>
-                  Manage webhook delivery for recordings
-                </ThemedText>
-              </View>
-              
-              <Button
-                onPress={async () => {
-                  try {
-                    const result = await syncService.resendAllFailedWebhooks();
-                    if (result.successCount > 0 || result.failCount > 0) {
-                      Toast.show({
-                        type: 'info',
-                        text1: 'Webhook Resend Complete',
-                        text2: `Success: ${result.successCount}, Failed: ${result.failCount}`,
-                        position: 'top',
-                        visibilityTime: 3000,
-                      });
-                    } else {
-                      Toast.show({
-                        type: 'info',
-                        text1: 'No failed webhooks found',
-                        position: 'top',
-                        visibilityTime: 2000,
-                      });
-                    }
-                  } catch (error) {
-                    Toast.show({
-                      type: 'error',
-                      text1: 'Failed to resend webhooks',
-                      position: 'top',
-                      visibilityTime: 3000,
-                    });
-                  }
-                }}
+              <SettingRow
+                icon="arrow.counterclockwise"
                 title="Resend Failed Webhooks"
-                variant="secondary"
-                size="medium"
+                subtitle="Retry delivery for failed webhooks"
+                onPress={handleResendWebhooks}
+                showBorder={false}
               />
-            </Card>
+            </View>
+          </Animated.View>
+
+          {/* Transcription Section */}
+          <Animated.View entering={FadeInDown.delay(300)}>
+            <ThemedText style={[styles.groupTitle, { color: theme.textSecondary }]}>
+              TRANSCRIPTION
+            </ThemedText>
+            <View style={[styles.groupContainer, { backgroundColor: theme.card }]}>
+              <SettingRow
+                icon="book"
+                title="Custom Dictionary"
+                subtitle={`${settings.dictionary?.length || 0} terms added`}
+                onPress={() => setShowDictionary(!showDictionary)}
+                showBorder={showDictionary}
+              />
+              {showDictionary && (
+                <Animated.View 
+                  entering={FadeIn}
+                  style={styles.dictionaryContainer}
+                >
+                  <DictionaryInput
+                    value={settings.dictionary || []}
+                    onChange={(dictionary) => updateSetting('dictionary', dictionary)}
+                    placeholder="Add a term..."
+                  />
+                </Animated.View>
+              )}
+            </View>
           </Animated.View>
 
           {/* Save Button */}
@@ -220,7 +267,7 @@ export default function SettingsScreen() {
             >
               <Button
                 onPress={saveSettings}
-                title="Save Settings"
+                title="Save Changes"
                 size="large"
                 loading={isSaving}
                 style={styles.saveButton}
@@ -254,26 +301,62 @@ const styles = StyleSheet.create({
   title: {
     fontSize: Typography.sizes.xxxl,
     fontWeight: Typography.weights.bold,
-    marginBottom: Spacing.xl,
+    marginBottom: Spacing.lg,
     lineHeight: Typography.sizes.xxxl * 1.3,
   },
-  section: {
-    marginBottom: Spacing.xl,
-    padding: Spacing.xl,
-  },
-  sectionHeader: {
-    marginBottom: Spacing.xl,
-  },
-  sectionTitle: {
-    fontSize: Typography.sizes.xl,
+  groupTitle: {
+    fontSize: Typography.sizes.xs,
     fontWeight: Typography.weights.semibold,
-    marginBottom: Spacing.xs,
+    letterSpacing: 0.5,
+    marginBottom: Spacing.sm,
+    marginTop: Spacing.xl,
   },
-  sectionDescription: {
+  groupContainer: {
+    borderRadius: BorderRadius.lg,
+    overflow: 'hidden',
+    marginBottom: Spacing.md,
+  },
+  settingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: Spacing.lg,
+    paddingHorizontal: Spacing.lg,
+  },
+  iconContainer: {
+    width: 32,
+    height: 32,
+    borderRadius: BorderRadius.sm,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: Spacing.md,
+  },
+  settingContent: {
+    flex: 1,
+  },
+  settingTitle: {
+    fontSize: Typography.sizes.base,
+    fontWeight: Typography.weights.medium,
+  },
+  settingSubtitle: {
     fontSize: Typography.sizes.sm,
+    marginTop: 2,
+  },
+  rightElement: {
+    marginRight: Spacing.sm,
+  },
+  inputContainer: {
+    padding: Spacing.lg,
+    paddingBottom: Spacing.md,
+  },
+  input: {
+    marginBottom: 0,
+  },
+  dictionaryContainer: {
+    padding: Spacing.lg,
+    paddingTop: 0,
   },
   saveButtonContainer: {
-    marginTop: Spacing.md,
+    marginTop: Spacing.xl,
     marginBottom: Spacing.xl,
   },
   saveButton: {
