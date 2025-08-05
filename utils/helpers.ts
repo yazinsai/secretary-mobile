@@ -1,8 +1,8 @@
 import { Recording } from '@/types';
-import { v4 as uuidv4 } from 'uuid';
+import * as Crypto from 'expo-crypto';
 
 export function generateRecordingId(): string {
-  return uuidv4();
+  return Crypto.randomUUID();
 }
 
 export function formatDuration(seconds: number): string {
