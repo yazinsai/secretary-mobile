@@ -127,16 +127,75 @@ class SupabaseService {
       const { data: { user } } = await client.auth.getUser();
       if (!user) throw new Error('User not authenticated');
       
-      const fileName = `${user.id}/${recordingId}.m4a`;
+      // Delete from database table first
+      const { error: dbError } = await client
+        .from('recordings')
+        .delete()
+        .eq('id', recordingId)
+        .eq('user_id', user.id);
+
+      if (dbError) {
+        console.error('Failed to delete recording from database:', dbError);
+        throw dbError;
+      }
       
-      const { error } = await client.storage
+      // Then delete the audio file from storage
+      const fileName = `${user.id}/${recordingId}.m4a`;
+      const { error: storageError } = await client.storage
         .from('recordings')
         .remove([fileName]);
 
-      if (error) throw error;
+      if (storageError) {
+        console.error('Failed to delete audio file from storage:', storageError);
+        // Non-critical error, continue - the database record is already deleted
+      }
     } catch (error) {
       console.error('Failed to delete from Supabase:', error);
-      // Non-critical error, continue
+      throw error;
+    }
+  }
+
+  async getRecordings(): Promise<Recording[]> {
+    try {
+      const client = await this.getClient();
+      
+      // Get current user
+      const { data: { user } } = await client.auth.getUser();
+      if (!user) {
+        console.log('User not authenticated, skipping database fetch');
+        return [];
+      }
+      
+      // Fetch recordings from database
+      const { data, error } = await client
+        .from('recordings')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('timestamp', { ascending: false });
+
+      if (error) {
+        console.error('Failed to fetch recordings from database:', error);
+        return [];
+      }
+
+      // Map database records to Recording type
+      return (data || []).map(record => ({
+        id: record.id,
+        timestamp: new Date(record.timestamp),
+        duration: record.duration,
+        fileUri: record.audio_url || '',
+        transcript: record.transcript || undefined,
+        correctedTranscript: record.corrected_transcript || undefined,
+        title: record.title || undefined,
+        status: record.status || 'uploaded',
+        syncStatus: 'synced' as const,
+        retryCount: 0,
+        webhookStatus: record.webhook_status || undefined,
+        webhookLastSentAt: record.webhook_last_sent_at ? new Date(record.webhook_last_sent_at) : undefined,
+      }));
+    } catch (error) {
+      console.error('Failed to get recordings from database:', error);
+      return [];
     }
   }
 }

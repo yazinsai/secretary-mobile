@@ -24,6 +24,7 @@ import { Recording } from '@/types';
 import { storageService } from '@/services/storage';
 import { audioService } from '@/services/audio';
 import { syncService } from '@/services/sync';
+import { recordingService, MergedRecording } from '@/services/recordingService';
 import { formatDate, formatDuration } from '@/utils/helpers';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { Colors, Spacing, BorderRadius, Typography, Shadows } from '@/constants/Colors';
@@ -34,7 +35,7 @@ export default function RecordingsScreen() {
   const colorScheme = useColorScheme();
   const theme = Colors[colorScheme ?? 'light'];
   const insets = useSafeAreaInsets();
-  const [recordings, setRecordings] = useState<Recording[]>([]);
+  const [recordings, setRecordings] = useState<MergedRecording[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [playingId, setPlayingId] = useState<string | null>(null);
   const soundRef = useRef<Audio.Sound | null>(null);
@@ -62,7 +63,7 @@ export default function RecordingsScreen() {
 
   const loadRecordings = async () => {
     try {
-      const data = await storageService.getRecordings();
+      const data = await recordingService.getMergedRecordings();
       setRecordings(data);
     } catch (error) {
       console.error('Failed to load recordings:', error);
@@ -75,9 +76,15 @@ export default function RecordingsScreen() {
     setRefreshing(false);
   };
 
-  const handlePlay = async (recording: Recording) => {
+  const handlePlay = async (recording: MergedRecording) => {
     try {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      
+      // Check if audio is available
+      if (!recording.fileUri) {
+        Alert.alert('Audio Not Available', 'This recording\'s audio file is not available on this device.');
+        return;
+      }
       
       // If we're currently playing this recording, stop it
       if (playingId === recording.id) {
@@ -117,7 +124,7 @@ export default function RecordingsScreen() {
     }
   };
 
-  const handleDelete = useCallback((recording: Recording) => {
+  const handleDelete = useCallback((recording: MergedRecording) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     
     Alert.alert(
@@ -141,8 +148,10 @@ export default function RecordingsScreen() {
                 setPlayingId(null);
               }
               
-              await storageService.deleteRecording(recording.id);
-              await audioService.deleteRecording(recording.fileUri);
+              await recordingService.deleteRecording(recording.id);
+              if (recording.source === 'local' || recording.source === 'both') {
+                await audioService.deleteRecording(recording.fileUri);
+              }
               await loadRecordings();
             } catch (error) {
               Alert.alert('Error', 'Failed to delete recording');
@@ -153,7 +162,7 @@ export default function RecordingsScreen() {
     );
   }, [playingId]);
 
-  const handleLongPress = useCallback((recording: Recording) => {
+  const handleLongPress = useCallback((recording: MergedRecording) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     
     const actions = [];
@@ -165,21 +174,13 @@ export default function RecordingsScreen() {
         onPress: async () => {
           try {
             await syncService.resendWebhook(recording.id);
-            Toast.show({
-              type: 'success',
-              text1: 'Webhook Sent',
-              position: 'top',
-              visibilityTime: 2000,
-            });
+            Alert.alert('Success', 'Webhook sent successfully');
             await loadRecordings();
           } catch (error) {
-            Toast.show({
-              type: 'error',
-              text1: 'Failed to send webhook',
-              text2: error instanceof Error ? error.message : 'Unknown error',
-              position: 'top',
-              visibilityTime: 3000,
-            });
+            Alert.alert(
+              'Error', 
+              `Failed to send webhook: ${error instanceof Error ? error.message : 'Unknown error'}`
+            );
           }
         },
       });
@@ -188,12 +189,12 @@ export default function RecordingsScreen() {
     actions.push(
       {
         text: 'Delete',
-        style: 'destructive',
+        style: 'destructive' as const,
         onPress: () => handleDelete(recording),
       },
       {
         text: 'Cancel',
-        style: 'cancel',
+        style: 'cancel' as const,
       }
     );
     
@@ -226,7 +227,7 @@ export default function RecordingsScreen() {
     }
   };
 
-  const renderRightActions = (recording: Recording) => {
+  const renderRightActions = (recording: MergedRecording) => {
     return (
       <Animated.View
         entering={FadeInDown}
@@ -242,7 +243,7 @@ export default function RecordingsScreen() {
     );
   };
 
-  const RecordingItem = ({ item, index }: { item: Recording; index: number }) => {
+  const RecordingItem = ({ item, index }: { item: MergedRecording; index: number }) => {
     const isCurrentlyPlaying = playingId === item.id;
     const scale = useSharedValue(1);
 
@@ -267,7 +268,7 @@ export default function RecordingsScreen() {
         layout={Layout.springify()}
       >
         <Swipeable
-          ref={(ref) => (swipeableRefs.current[item.id] = ref)}
+          ref={(ref) => { swipeableRefs.current[item.id] = ref; }}
           renderRightActions={() => renderRightActions(item)}
           rightThreshold={40}
         >
@@ -288,7 +289,7 @@ export default function RecordingsScreen() {
                   </ThemedText>
                   {item.transcript && (
                     <ThemedText 
-                      style={[styles.recordingPreview, { color: theme.textTertiary }]} 
+                      style={[styles.recordingPreview, { color: theme.textSecondary }]} 
                       numberOfLines={2}
                     >
                       {item.transcript}
@@ -313,20 +314,52 @@ export default function RecordingsScreen() {
                         ]} 
                       />
                     )}
+                    {/* Sync status indicator */}
+                    {item.source === 'database' && (
+                      <View style={styles.sourceIndicator}>
+                        <IconSymbol
+                          name="icloud.fill"
+                          size={14}
+                          color={theme.primary}
+                        />
+                      </View>
+                    )}
+                    {item.source === 'both' && item.syncStatus === 'synced' && (
+                      <View style={styles.sourceIndicator}>
+                        <IconSymbol
+                          name="checkmark.icloud.fill"
+                          size={14}
+                          color={theme.success}
+                        />
+                      </View>
+                    )}
+                    {item.source === 'local' && item.syncStatus !== 'synced' && (
+                      <View style={styles.sourceIndicator}>
+                        <IconSymbol
+                          name="iphone"
+                          size={14}
+                          color={theme.textSecondary}
+                        />
+                      </View>
+                    )}
                   </View>
                 </View>
                 
                 <Pressable
                   style={[
                     styles.playButton,
-                    { backgroundColor: isCurrentlyPlaying ? theme.primary : theme.backgroundSecondary }
+                    { 
+                      backgroundColor: isCurrentlyPlaying ? theme.primary : theme.backgroundSecondary,
+                      opacity: !item.fileUri ? 0.5 : 1
+                    }
                   ]}
                   onPress={() => handlePlay(item)}
+                  disabled={!item.fileUri}
                 >
                   <IconSymbol
-                    name={isCurrentlyPlaying ? 'pause.fill' : 'play.fill'}
+                    name={!item.fileUri ? 'play.slash.fill' : (isCurrentlyPlaying ? 'pause.fill' : 'play.fill')}
                     size={20}
-                    color={isCurrentlyPlaying ? 'white' : theme.primary}
+                    color={!item.fileUri ? theme.textSecondary : (isCurrentlyPlaying ? 'white' : theme.primary)}
                   />
                 </Pressable>
               </View>
@@ -441,6 +474,9 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
+  },
+  sourceIndicator: {
+    marginLeft: Spacing.xs,
   },
   statusBadge: {
     flexDirection: 'row',
