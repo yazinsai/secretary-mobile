@@ -136,69 +136,6 @@ class SyncService {
     }
   }
 
-  async resendWebhook(recordingId: string): Promise<void> {
-    try {
-      const recordings = await storageService.getRecordings();
-      const recording = recordings.find(r => r.id === recordingId);
-      
-      if (!recording) {
-        throw new Error('Recording not found');
-      }
-
-      if (!recording.transcript) {
-        throw new Error('No transcript available');
-      }
-
-      const settings = await userSettingsService.getSettings();
-      if (!settings.webhookUrl) {
-        throw new Error('No webhook URL configured');
-      }
-
-      // Send webhook
-      await supabaseService.sendWebhook(settings.webhookUrl, {
-        id: recording.id,
-        timestamp: recording.timestamp.toISOString(),
-        duration: recording.duration,
-        transcript: recording.transcript,
-        correctedTranscript: recording.correctedTranscript || recording.transcript,
-        audioUrl: recording.fileUri.startsWith('http') ? recording.fileUri : undefined,
-      });
-
-      // Update webhook status
-      await storageService.updateRecording(recordingId, {
-        webhookStatus: 'sent',
-        webhookLastSentAt: new Date(),
-      });
-
-      // Sync to database
-      await this.syncRecordings();
-    } catch (error) {
-      await storageService.updateRecording(recordingId, {
-        webhookStatus: 'failed',
-        error: error instanceof Error ? error.message : 'Failed to resend webhook',
-      });
-      throw error;
-    }
-  }
-
-  async resendAllFailedWebhooks(): Promise<{ successCount: number; failCount: number }> {
-    const recordings = await storageService.getRecordings();
-    const failedWebhooks = recordings.filter(r => r.webhookStatus === 'failed');
-
-    let successCount = 0;
-    let failCount = 0;
-
-    for (const recording of failedWebhooks) {
-      try {
-        await this.resendWebhook(recording.id);
-        successCount++;
-      } catch (error) {
-        failCount++;
-      }
-    }
-
-    return { successCount, failCount };
-  }
 }
 
 export const syncService = new SyncService();

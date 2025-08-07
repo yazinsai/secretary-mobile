@@ -164,28 +164,7 @@ export default function RecordingsScreen() {
   const handleLongPress = useCallback((recording: MergedRecording) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     
-    const actions = [];
-    
-    // Add resend webhook option if webhook failed
-    if (recording.webhookStatus === 'failed' && recording.transcript) {
-      actions.push({
-        text: 'Resend Webhook',
-        onPress: async () => {
-          try {
-            await syncService.resendWebhook(recording.id);
-            Alert.alert('Success', 'Webhook sent successfully');
-            await loadRecordings();
-          } catch (error) {
-            Alert.alert(
-              'Error', 
-              `Failed to send webhook: ${error instanceof Error ? error.message : 'Unknown error'}`
-            );
-          }
-        },
-      });
-    }
-    
-    actions.push(
+    const actions = [
       {
         text: 'Delete',
         style: 'destructive' as const,
@@ -195,7 +174,7 @@ export default function RecordingsScreen() {
         text: 'Cancel',
         style: 'cancel' as const,
       }
-    );
+    ];
     
     Alert.alert('Recording Options', undefined, actions);
   }, [handleDelete]);

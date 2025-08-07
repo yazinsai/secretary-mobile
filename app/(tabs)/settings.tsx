@@ -117,34 +117,6 @@ export default function SettingsScreen() {
     }
   };
 
-  const handleResendWebhooks = async () => {
-    try {
-      const result = await syncService.resendAllFailedWebhooks();
-      if (result.successCount > 0 || result.failCount > 0) {
-        Toast.show({
-          type: 'info',
-          text1: 'Webhook Resend Complete',
-          text2: `Success: ${result.successCount}, Failed: ${result.failCount}`,
-          position: 'top',
-          visibilityTime: 3000,
-        });
-      } else {
-        Toast.show({
-          type: 'info',
-          text1: 'No failed webhooks found',
-          position: 'top',
-          visibilityTime: 2000,
-        });
-      }
-    } catch (error) {
-      Toast.show({
-        type: 'error',
-        text1: 'Failed to resend webhooks',
-        position: 'top',
-        visibilityTime: 3000,
-      });
-    }
-  };
 
   return (
     <ThemedView style={styles.container}>
@@ -221,13 +193,6 @@ export default function SettingsScreen() {
                   style={styles.input}
                 />
               </View>
-              <SettingRow
-                icon="arrow.counterclockwise"
-                title="Resend Failed Webhooks"
-                subtitle="Retry delivery for failed webhooks"
-                onPress={handleResendWebhooks}
-                showBorder={false}
-              />
             </View>
           </Animated.View>
 

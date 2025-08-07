@@ -24,6 +24,7 @@ import { Colors, Spacing, BorderRadius, Typography, Shadows } from '@/constants/
 import { useRecording } from '@/hooks/useRecording';
 import { formatDuration } from '@/utils/helpers';
 import { queueService } from '@/services/queue';
+import { syncService } from '@/services/sync';
 
 const AnimatedLinearGradient = Animated.createAnimatedComponent(LinearGradient);
 
@@ -129,14 +130,21 @@ export default function RecordScreen() {
           exiting={SlideOutRight.springify()}
           style={styles.queueBadge}
         >
-          <Card padding="md" shadow="sm" style={styles.queueCard}>
-            <View style={styles.queueContent}>
-              <IconSymbol name="arrow.up.circle.fill" size={20} color={theme.primary} />
-              <ThemedText style={[styles.queueText, { color: theme.text }]}>
-                {queueCount} pending
-              </ThemedText>
-            </View>
-          </Card>
+          <Pressable
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              syncService.syncRecordings();
+            }}
+          >
+            <Card padding="md" shadow="sm" style={styles.queueCard}>
+              <View style={styles.queueContent}>
+                <IconSymbol name="arrow.up.circle.fill" size={20} color={theme.primary} />
+                <ThemedText style={[styles.queueText, { color: theme.text }]}>
+                  {queueCount} pending
+                </ThemedText>
+              </View>
+            </Card>
+          </Pressable>
         </Animated.View>
       )}
 
