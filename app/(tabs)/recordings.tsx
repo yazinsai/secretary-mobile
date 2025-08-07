@@ -27,6 +27,7 @@ import { recordingService, MergedRecording } from '@/services/recordingService';
 import { formatDate, formatDuration, groupRecordingsByDate, formatTimeOnly } from '@/utils/helpers';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { Colors, Spacing, BorderRadius, Typography, Shadows } from '@/constants/Colors';
+import { eventService, EventTypes } from '@/services/events';
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
@@ -52,11 +53,22 @@ export default function RecordingsScreen() {
       staysActiveInBackground: false,
     });
 
+    // Subscribe to recording events
+    const subscriptions = [
+      eventService.subscribe(EventTypes.RECORDING_PROCESSED, loadRecordings),
+      eventService.subscribe(EventTypes.RECORDING_UPLOADED, loadRecordings),
+      eventService.subscribe(EventTypes.RECORDING_FAILED, loadRecordings),
+      eventService.subscribe(EventTypes.RECORDING_CREATED, loadRecordings),
+      eventService.subscribe(EventTypes.RECORDING_DELETED, loadRecordings),
+    ];
+
     // Cleanup on unmount
     return () => {
       if (soundRef.current) {
         soundRef.current.unloadAsync();
       }
+      // Unsubscribe from events
+      subscriptions.forEach(sub => eventService.unsubscribe(sub));
     };
   }, []);
 

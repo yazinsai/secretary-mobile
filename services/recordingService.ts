@@ -1,6 +1,7 @@
 import { Recording } from '@/types';
 import { storageService } from './storage';
 import { supabaseService } from './supabase';
+import { eventService, EventTypes } from './events';
 
 export interface MergedRecording extends Recording {
   source: 'local' | 'database' | 'both';
@@ -118,6 +119,9 @@ class RecordingService {
       if (recording.source === 'database' || recording.source === 'both') {
         await supabaseService.deleteRecording(id);
       }
+      
+      // Emit event for deleted recording
+      eventService.emit(EventTypes.RECORDING_DELETED, { recordingId: id });
     } catch (error) {
       console.error('Error deleting recording:', error);
       throw error;

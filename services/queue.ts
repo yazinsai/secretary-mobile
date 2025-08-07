@@ -8,6 +8,7 @@ import { storageService } from './storage';
 import { supabaseService } from './supabase';
 import { groqService } from './groq';
 import { userSettingsService } from './userSettings';
+import { eventService, EventTypes } from './events';
 
 class QueueService {
   private isProcessing = false;
@@ -132,6 +133,9 @@ class QueueService {
             webhookStatus: 'sent',
           });
           
+          // Emit event for successful processing
+          eventService.emit(EventTypes.RECORDING_PROCESSED, { recordingId: recording.id });
+          
           // Show success toast
           Toast.show({
             type: 'success',
@@ -169,6 +173,9 @@ class QueueService {
               status: 'failed',
               error: queueItem.lastError,
             });
+            
+            // Emit event for failed processing
+            eventService.emit(EventTypes.RECORDING_FAILED, { recordingId: recording.id });
             
             // Show error toast
             Toast.show({

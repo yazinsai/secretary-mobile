@@ -6,6 +6,7 @@ import { Recording } from '@/types';
 import { storageService } from '@/services/storage';
 import { queueService } from '@/services/queue';
 import { formatDuration } from '@/utils/helpers';
+import { eventService, EventTypes } from '@/services/events';
 
 export function useRecording() {
   const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
@@ -66,6 +67,9 @@ export function useRecording() {
 
       await storageService.saveRecording(recording);
       await queueService.enqueueRecording(recording);
+      
+      // Emit event for new recording
+      eventService.emit(EventTypes.RECORDING_CREATED, { recordingId: recording.id });
       
       // Show success toast
       Toast.show({
