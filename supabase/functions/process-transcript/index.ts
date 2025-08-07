@@ -53,7 +53,7 @@ serve(async (req) => {
     const prompt = `Given this transcript, perform two tasks:
 
 1. Generate a concise 3-5 word title that captures the main topic
-2. Correct the transcript for proper capitalization and spelling${dictionary.length > 0 ? ` of these dictionary terms: ${dictionary.join(', ')}` : ''}
+2. Correct the transcript for proper capitalization and spelling${dictionary.length > 0 ? ` of these dictionary terms (ONLY if similar sounding words are present): ${dictionary.join(', ')}` : ''}
 
 Transcript: "${transcript}"
 
