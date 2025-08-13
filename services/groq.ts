@@ -10,18 +10,31 @@ interface TranscriptionResult {
 class GroqService {
   async transcribeAudio(fileUri: string): Promise<string> {
     try {
-
+      // Get file info for debugging
+      const fileInfo = await FileSystem.getInfoAsync(fileUri);
+      console.log('Audio file info:', fileInfo);
+      
+      if (!fileInfo.exists) {
+        throw new Error('Audio file does not exist');
+      }
+      
       // Read file as base64
       const base64Audio = await FileSystem.readAsStringAsync(fileUri, {
         encoding: FileSystem.EncodingType.Base64,
       });
+      
+      console.log('Base64 audio length:', base64Audio.length);
 
       // Create form data
       const formData = new FormData();
       
+      // Determine file extension from URI
+      const extension = fileUri.split('.').pop() || 'm4a';
+      const filename = `audio.${extension}`;
+      
       // For Edge Functions, we need to send the base64 data
       formData.append('file', base64Audio);
-      formData.append('filename', 'audio.m4a');
+      formData.append('filename', filename);
 
       // Call Supabase Edge Function
       const response = await fetch(`${SUPABASE_URL}/functions/v1/transcribe-audio`, {
@@ -33,8 +46,15 @@ class GroqService {
       });
 
       if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Transcription failed');
+        const errorText = await response.text();
+        console.error('Transcription API error response:', errorText);
+        
+        try {
+          const error = JSON.parse(errorText);
+          throw new Error(`Transcription failed: ${JSON.stringify(error)}`);
+        } catch (e) {
+          throw new Error(`Transcription failed: ${errorText}`);
+        }
       }
 
       const result = await response.json();

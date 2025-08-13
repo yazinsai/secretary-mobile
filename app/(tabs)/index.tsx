@@ -1,90 +1,128 @@
-import { StyleSheet, View, Platform, Pressable } from 'react-native';
+import { StyleSheet, View, Platform, Pressable, Dimensions } from 'react-native';
 import { useState, useEffect } from 'react';
-import { LinearGradient } from 'expo-linear-gradient';
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
-  withRepeat,
-  withTiming,
   withSpring,
+  withTiming,
+  withSequence,
   interpolate,
-  Easing,
   FadeIn,
   FadeOut,
-  SlideInRight,
-  SlideOutRight,
+  SlideInUp,
 } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
 import { IconSymbol } from '@/components/ui/IconSymbol';
-import { Card } from '@/components/ui/Card';
 import { useColorScheme } from '@/hooks/useColorScheme';
-import { Colors, Spacing, BorderRadius, Typography, Shadows } from '@/constants/Colors';
+import { Colors, Spacing, BorderRadius, Typography } from '@/constants/Colors';
 import { useRecording } from '@/hooks/useRecording';
-import { formatDuration } from '@/utils/helpers';
-import { queueService } from '@/services/queue';
-import { syncService } from '@/services/sync';
 
-const AnimatedLinearGradient = Animated.createAnimatedComponent(LinearGradient);
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+
+// Animated digit component with vertical slide
+const AnimatedDigit = ({ value, style, color }: { value: string, style: any, color: string }) => {
+  const translateY = useSharedValue(0);
+  const opacity = useSharedValue(1);
+  const [displayValue, setDisplayValue] = useState(value);
+  const [prevValue, setPrevValue] = useState(value);
+
+  useEffect(() => {
+    if (value !== prevValue) {
+      // Slide out old digit
+      translateY.value = withSpring(-30, {
+        damping: 8,
+        stiffness: 200,
+        velocity: 5,
+      });
+      opacity.value = withTiming(0, { duration: 150 });
+
+      // Update value and slide in new digit
+      setTimeout(() => {
+        setDisplayValue(value);
+        translateY.value = 30;
+        translateY.value = withSpring(0, {
+          damping: 10,
+          stiffness: 180,
+          mass: 0.8,
+        });
+        opacity.value = withTiming(1, { duration: 200 });
+      }, 150);
+
+      setPrevValue(value);
+    }
+  }, [value]);
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: translateY.value }],
+    opacity: opacity.value,
+  }));
+
+  return (
+    <Animated.Text style={[style, animatedStyle, { color }]}>
+      {displayValue}
+    </Animated.Text>
+  );
+};
 
 export default function RecordScreen() {
   const colorScheme = useColorScheme();
   const theme = Colors[colorScheme ?? 'light'];
   const { isRecording, duration, error, startRecording, stopRecording } = useRecording();
   const [isSaving, setIsSaving] = useState(false);
-  const [queueCount, setQueueCount] = useState(0);
+  const [showSuccess, setShowSuccess] = useState(false);
 
   // Animation values
-  const pulseScale = useSharedValue(1);
   const buttonScale = useSharedValue(1);
-  const rotation = useSharedValue(0);
-  const gradientOpacity = useSharedValue(0.3);
+  const timerContainerScale = useSharedValue(0);
+  const timerContainerOpacity = useSharedValue(0);
+  const successScale = useSharedValue(0);
 
-  useEffect(() => {
-    // Check queue count on mount and after recordings
-    const checkQueue = async () => {
-      const count = await queueService.getQueueCount();
-      setQueueCount(count);
+  // Split duration into individual digits
+  const formatDurationDigits = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    const minStr = mins.toString();
+    const secStr = secs.toString().padStart(2, '0');
+    
+    return {
+      minutes: minStr,
+      secondTens: secStr[0],
+      secondOnes: secStr[1],
     };
-    
-    checkQueue();
-    const interval = setInterval(checkQueue, 5000);
-    
-    return () => clearInterval(interval);
-  }, []);
+  };
+
+  const { minutes, secondTens, secondOnes } = formatDurationDigits(duration);
 
   useEffect(() => {
     if (isRecording) {
-      // Start pulse animation
-      pulseScale.value = withRepeat(
-        withTiming(1.3, { duration: 1000, easing: Easing.ease }),
-        -1,
-        true
-      );
-      // Start rotation animation
-      rotation.value = withRepeat(
-        withTiming(360, { duration: 20000, easing: Easing.linear }),
-        -1
-      );
-      // Increase gradient opacity
-      gradientOpacity.value = withTiming(0.5, { duration: 300 });
+      // Animate timer container in with smooth scale
+      timerContainerOpacity.value = withTiming(1, { duration: 300 });
+      timerContainerScale.value = withSpring(1, {
+        damping: 12,
+        stiffness: 150,
+      });
     } else {
-      // Stop animations
-      pulseScale.value = withTiming(1, { duration: 300 });
-      rotation.value = withTiming(0, { duration: 300 });
-      gradientOpacity.value = withTiming(0.3, { duration: 300 });
+      // Hide timer when not recording
+      timerContainerOpacity.value = withTiming(0, { duration: 200 });
+      timerContainerScale.value = withTiming(0.8, { duration: 200 });
     }
   }, [isRecording]);
 
   const handlePressIn = () => {
-    'worklet';
-    buttonScale.value = withSpring(0.9, { damping: 15, stiffness: 400 });
+    buttonScale.value = withSpring(0.88, { 
+      damping: 10, 
+      stiffness: 400 
+    });
   };
 
   const handlePressOut = () => {
-    'worklet';
-    buttonScale.value = withSpring(1, { damping: 15, stiffness: 400 });
+    buttonScale.value = withSpring(1, { 
+      damping: 8,
+      stiffness: 200,
+      velocity: 2
+    });
   };
 
   const handlePress = async () => {
@@ -93,91 +131,83 @@ export default function RecordScreen() {
     if (isRecording) {
       setIsSaving(true);
       await stopRecording();
-      setTimeout(() => setIsSaving(false), 500);
+      
+      // Trigger success animation
+      setShowSuccess(true);
+      successScale.value = withSequence(
+        withSpring(1.05, { 
+          damping: 10,
+          stiffness: 180,
+        }),
+        withSpring(1, { 
+          damping: 12,
+          stiffness: 200,
+        })
+      );
+      
+      setTimeout(() => {
+        setIsSaving(false);
+        setShowSuccess(false);
+        successScale.value = withTiming(0, { duration: 150 });
+      }, 1800);
     } else {
       await startRecording();
     }
   };
 
-  const pulseAnimatedStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: pulseScale.value }],
-    opacity: interpolate(pulseScale.value, [1, 1.3], [0.3, 0]),
-  }));
-
   const buttonAnimatedStyle = useAnimatedStyle(() => ({
     transform: [{ scale: buttonScale.value }],
   }));
 
-  const gradientAnimatedStyle = useAnimatedStyle(() => ({
-    transform: [{ rotate: `${rotation.value}deg` }],
-    opacity: gradientOpacity.value,
+  const timerContainerAnimatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: timerContainerScale.value }],
+    opacity: timerContainerOpacity.value,
+  }));
+
+  const successAnimatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: successScale.value }],
+    opacity: interpolate(successScale.value, [0, 0.5, 1], [0, 1, 1]),
   }));
 
   return (
-    <ThemedView style={styles.container}>
-      {/* Animated gradient background */}
-      <AnimatedLinearGradient
-        colors={[theme.primaryLight, theme.background, theme.primaryLight]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={[StyleSheet.absoluteFillObject, gradientAnimatedStyle]}
-      />
-
-      {/* Queue badge */}
-      {queueCount > 0 && (
-        <Animated.View
-          entering={SlideInRight.springify()}
-          exiting={SlideOutRight.springify()}
-          style={styles.queueBadge}
-        >
-          <Pressable
-            onPress={() => {
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              syncService.syncRecordings();
-            }}
-          >
-            <Card padding="md" shadow="sm" style={styles.queueCard}>
-              <View style={styles.queueContent}>
-                <IconSymbol name="arrow.up.circle.fill" size={20} color={theme.primary} />
-                <ThemedText style={[styles.queueText, { color: theme.text }]}>
-                  {queueCount} pending
-                </ThemedText>
-              </View>
-            </Card>
-          </Pressable>
-        </Animated.View>
-      )}
-
-      {/* App title */}
-      <Animated.View entering={FadeIn.delay(200)}>
-        <ThemedText type="title" style={styles.title}>
-          Secretary
-        </ThemedText>
-        <ThemedText style={styles.subtitle}>
-          Your voice, captured beautifully
+    <ThemedView style={[styles.container, { backgroundColor: theme.background }]}>
+      {/* Timer Display - Only visible when recording */}
+      <Animated.View style={[styles.timerContainer, timerContainerAnimatedStyle]}>
+        <View style={styles.timerRow}>
+          {/* Minutes - no animation needed for single digit */}
+          <ThemedText type="hero" style={[styles.timer, { color: theme.text }]}>
+            {minutes}
+          </ThemedText>
+          
+          <ThemedText type="hero" style={[styles.timer, { color: theme.text }]}>
+            :
+          </ThemedText>
+          
+          {/* Seconds - each digit animates independently */}
+          <AnimatedDigit 
+            value={secondTens} 
+            style={styles.timer} 
+            color={theme.text}
+          />
+          <AnimatedDigit 
+            value={secondOnes} 
+            style={styles.timer} 
+            color={theme.text}
+          />
+        </View>
+        <ThemedText type="caption" style={[styles.timerLabel, { color: theme.textMuted }]}>
+          RECORDING
         </ThemedText>
       </Animated.View>
 
-      {/* Record button container */}
-      <View style={styles.recordContainer}>
-        {/* Pulse effect when recording */}
-        {isRecording && (
-          <Animated.View
-            style={[
-              styles.pulseCircle,
-              { backgroundColor: theme.primary },
-              pulseAnimatedStyle,
-            ]}
-          />
-        )}
-
-        {/* Main record button */}
+      {/* Main Record Button - Centered */}
+      <View style={styles.buttonContainer}>
         <Animated.View style={buttonAnimatedStyle}>
           <Pressable
             style={[
               styles.recordButton,
               { 
-                backgroundColor: isRecording ? theme.error : theme.primary,
+                backgroundColor: isRecording ? theme.accent : theme.primary,
               }
             ]}
             onPressIn={handlePressIn}
@@ -188,31 +218,44 @@ export default function RecordScreen() {
             <IconSymbol 
               size={64} 
               name={isRecording ? "stop.fill" : "mic.fill"} 
-              color="white" 
+              color={isRecording ? theme.primary : theme.accent}
             />
           </Pressable>
         </Animated.View>
+
+        {/* Button Label */}
+        {!isRecording && !showSuccess && (
+          <Animated.View entering={FadeIn.delay(100)} exiting={FadeOut}>
+            <ThemedText type="body" style={[styles.buttonLabel, { color: theme.textSecondary }]}>
+              TAP TO RECORD
+            </ThemedText>
+          </Animated.View>
+        )}
       </View>
 
-      {/* Status text */}
-      <Animated.View entering={FadeIn.delay(400)}>
-        <ThemedText style={styles.statusText}>
-          {isSaving ? 'Saving...' : isRecording ? formatDuration(duration) : 'Tap to record'}
-        </ThemedText>
-      </Animated.View>
+      {/* Success Message */}
+      {showSuccess && (
+        <Animated.View style={[styles.successContainer, successAnimatedStyle]}>
+          <View style={[styles.successCard, { backgroundColor: theme.card, borderColor: theme.primary + '20' }]}>
+            <IconSymbol name="checkmark.circle.fill" size={48} color={theme.primary} />
+            <ThemedText type="subheading" style={[styles.successText, { color: theme.text }]}>
+              Saved
+            </ThemedText>
+          </View>
+        </Animated.View>
+      )}
 
-      {/* Error message */}
+      {/* Error Message */}
       {error && (
         <Animated.View
-          entering={FadeIn}
+          entering={SlideInUp.springify()}
           exiting={FadeOut}
-          style={styles.errorContainer}
+          style={[styles.errorCard, { backgroundColor: theme.error + '15' }]}
         >
-          <Card padding="md" shadow="sm" style={styles.errorCard}>
-            <ThemedText style={[styles.errorText, { color: theme.error }]}>
-              {error}
-            </ThemedText>
-          </Card>
+          <IconSymbol name="exclamationmark.circle" size={20} color={theme.error} />
+          <ThemedText style={[styles.errorText, { color: theme.error }]}>
+            {error}
+          </ThemedText>
         </Animated.View>
       )}
     </ThemedView>
@@ -222,80 +265,86 @@ export default function RecordScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    alignItems: 'center',
     justifyContent: 'center',
-    padding: Spacing.xl,
-  },
-  title: {
-    fontSize: Typography.sizes.huge,
-    fontWeight: Typography.weights.bold,
-    marginBottom: Spacing.sm,
-    textAlign: 'center',
-    lineHeight: Typography.sizes.huge * 1.2,
-  },
-  subtitle: {
-    fontSize: Typography.sizes.lg,
-    opacity: 0.6,
-    marginBottom: Spacing.huge,
-    textAlign: 'center',
-  },
-  recordContainer: {
-    width: 200,
-    height: 200,
     alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: Spacing.xxxl,
   },
-  recordButton: {
-    width: 160,
-    height: 160,
-    borderRadius: BorderRadius.xxl,
+  timerContainer: {
+    position: 'absolute',
+    top: SCREEN_HEIGHT * 0.25,
     alignItems: 'center',
-    justifyContent: 'center',
-    ...Shadows.xl,
   },
-  pulseCircle: {
-    position: 'absolute',
-    width: 160,
-    height: 160,
-    borderRadius: BorderRadius.xxl,
-  },
-  statusText: {
-    fontSize: Typography.sizes.xl,
-    opacity: 0.8,
-    fontWeight: Typography.weights.medium,
-  },
-  errorContainer: {
-    position: 'absolute',
-    bottom: Spacing.huge,
-    left: Spacing.xl,
-    right: Spacing.xl,
-  },
-  errorCard: {
-    backgroundColor: 'rgba(239, 68, 68, 0.1)',
-    borderColor: 'rgba(239, 68, 68, 0.2)',
-  },
-  errorText: {
-    fontSize: Typography.sizes.sm,
-    textAlign: 'center',
-    fontWeight: Typography.weights.medium,
-  },
-  queueBadge: {
-    position: 'absolute',
-    top: Platform.OS === 'ios' ? 60 : 40,
-    right: Spacing.xl,
-  },
-  queueCard: {
-    paddingVertical: Spacing.sm,
-    paddingHorizontal: Spacing.md,
-  },
-  queueContent: {
+  timerRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: Spacing.sm,
   },
-  queueText: {
+  timer: {
+    fontSize: Typography.sizes.massive,
+    lineHeight: Typography.sizes.massive,
+    fontFamily: 'Inter-Black',
+    letterSpacing: -2,
+  },
+  timerLabel: {
+    marginTop: Spacing.sm,
+    opacity: 0.6,
+    letterSpacing: 1.5,
+  },
+  buttonContainer: {
+    alignItems: 'center',
+    gap: Spacing.xxl,
+  },
+  recordButton: {
+    width: 140,
+    height: 140,
+    borderRadius: 70,
+    alignItems: 'center',
+    justifyContent: 'center',
+    elevation: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.2,
+    shadowRadius: 16,
+  },
+  buttonLabel: {
+    marginTop: Spacing.lg,
+    letterSpacing: 0.5,
+  },
+  successContainer: {
+    position: 'absolute',
+    top: SCREEN_HEIGHT * 0.3,
+  },
+  successCard: {
+    paddingVertical: Spacing.xxl,
+    paddingHorizontal: Spacing.xxxl,
+    borderRadius: BorderRadius.xxl,
+    alignItems: 'center',
+    borderWidth: 1,
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    flexDirection: 'row',
+    gap: Spacing.lg,
+  },
+  successText: {
+    letterSpacing: -0.5,
+  },
+  successSubtext: {
+    opacity: 0.85,
+  },
+  errorCard: {
+    position: 'absolute',
+    bottom: Spacing.huge,
+    marginHorizontal: Spacing.xl,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: Spacing.lg,
+    paddingHorizontal: Spacing.xl,
+    borderRadius: BorderRadius.lg,
+    gap: Spacing.md,
+  },
+  errorText: {
+    flex: 1,
     fontSize: Typography.sizes.sm,
-    fontWeight: Typography.weights.semibold,
   },
 });

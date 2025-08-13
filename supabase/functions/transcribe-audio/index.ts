@@ -22,6 +22,11 @@ serve(async (req) => {
     const base64Audio = formData.get('file') as string
     const filename = formData.get('filename') as string || 'audio.m4a'
     
+    console.log('Received audio file:', { 
+      filename, 
+      base64Length: base64Audio?.length || 0 
+    })
+    
     if (!base64Audio) {
       throw new Error('No audio file provided')
     }
@@ -32,7 +37,18 @@ serve(async (req) => {
     for (let i = 0; i < binaryString.length; i++) {
       bytes[i] = binaryString.charCodeAt(i)
     }
-    const audioBlob = new Blob([bytes], { type: 'audio/mp4' })
+    
+    // Determine the correct MIME type based on filename
+    let mimeType = 'audio/mp4'
+    if (filename.endsWith('.m4a')) {
+      mimeType = 'audio/mp4'
+    } else if (filename.endsWith('.webm')) {
+      mimeType = 'audio/webm'
+    } else if (filename.endsWith('.mp3')) {
+      mimeType = 'audio/mpeg'
+    }
+    
+    const audioBlob = new Blob([bytes], { type: mimeType })
 
     // Create form data for Groq API
     const groqFormData = new FormData()
@@ -42,6 +58,8 @@ serve(async (req) => {
     groqFormData.append('language', 'en')
 
     // Send to Groq API
+    console.log('Sending to Groq API with blob size:', audioBlob.size)
+    
     const response = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
       method: 'POST',
       headers: {
@@ -52,6 +70,7 @@ serve(async (req) => {
 
     if (!response.ok) {
       const error = await response.text()
+      console.error('Groq API error:', error)
       throw new Error(`Transcription failed: ${error}`)
     }
 

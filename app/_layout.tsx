@@ -1,5 +1,13 @@
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { useFonts } from 'expo-font';
+import { 
+  Inter_400Regular,
+  Inter_500Medium,
+  Inter_600SemiBold,
+  Inter_700Bold,
+  Inter_800ExtraBold,
+  Inter_900Black
+} from '@expo-google-fonts/inter';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
@@ -11,6 +19,7 @@ import { useColorScheme } from '@/hooks/useColorScheme';
 import { queueService } from '@/services/queue';
 import { syncService } from '@/services/sync';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
+import { toastConfig } from '@/components/CustomToast';
 
 function RootLayoutNav() {
   const colorScheme = useColorScheme();
@@ -41,14 +50,19 @@ function RootLayoutNav() {
         <Stack.Screen name="auth/forgot-password" options={{ headerShown: false }} />
       </Stack>
       <StatusBar style="auto" />
-      <Toast />
+      <Toast config={toastConfig} />
     </ThemeProvider>
   );
 }
 
 export default function RootLayout() {
   const [loaded] = useFonts({
-    SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
+    'Inter-Regular': Inter_400Regular,
+    'Inter-Medium': Inter_500Medium,
+    'Inter-SemiBold': Inter_600SemiBold,
+    'Inter-Bold': Inter_700Bold,
+    'Inter-ExtraBold': Inter_800ExtraBold,
+    'Inter-Black': Inter_900Black,
   });
 
   useEffect(() => {
