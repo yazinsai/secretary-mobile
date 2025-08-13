@@ -18,6 +18,7 @@ import { IconSymbol } from '@/components/ui/IconSymbol';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { Colors, Spacing, BorderRadius, Typography } from '@/constants/Colors';
 import { useRecording } from '@/hooks/useRecording';
+import { isSimulator, getSimulatorWarningMessage } from '@/utils/platform';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -72,6 +73,7 @@ export default function RecordScreen() {
   const { isRecording, duration, error, startRecording, stopRecording } = useRecording();
   const [isSaving, setIsSaving] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
+  const isOnSimulator = isSimulator();
 
   // Animation values
   const buttonScale = useSharedValue(1);
@@ -171,6 +173,19 @@ export default function RecordScreen() {
 
   return (
     <ThemedView style={[styles.container, { backgroundColor: theme.background }]}>
+      {/* Simulator Warning */}
+      {isOnSimulator && (
+        <Animated.View
+          entering={SlideInUp.springify()}
+          style={[styles.simulatorWarning, { backgroundColor: theme.warning + '15' }]}
+        >
+          <IconSymbol name="exclamationmark.triangle" size={20} color={theme.warning} />
+          <ThemedText style={[styles.simulatorWarningText, { color: theme.warning }]}>
+            {getSimulatorWarningMessage()}
+          </ThemedText>
+        </Animated.View>
+      )}
+
       {/* Timer Display - Only visible when recording */}
       <Animated.View style={[styles.timerContainer, timerContainerAnimatedStyle]}>
         <View style={styles.timerRow}>
@@ -346,5 +361,26 @@ const styles = StyleSheet.create({
   errorText: {
     flex: 1,
     fontSize: Typography.sizes.sm,
+  },
+  simulatorWarning: {
+    position: 'absolute',
+    top: Spacing.huge * 2,
+    marginHorizontal: Spacing.xl,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.lg,
+    borderRadius: BorderRadius.md,
+    gap: Spacing.sm,
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+  },
+  simulatorWarningText: {
+    flex: 1,
+    fontSize: Typography.sizes.xs,
+    lineHeight: Typography.sizes.sm * 1.4,
   },
 });

@@ -2,6 +2,7 @@ import { useAudioRecorder, RecordingPresets, AudioModule } from 'expo-audio';  /
 import * as FileSystem from 'expo-file-system';
 import { Recording } from '@/types';
 import { generateRecordingId } from '@/utils/helpers';
+import { isSimulator, getSimulatorWarningMessage } from '@/utils/platform';
 
 class AudioService {
   private audioRecorder: ReturnType<typeof useAudioRecorder> | null = null;
@@ -9,6 +10,12 @@ class AudioService {
   private currentRecordingUri: string | null = null;
 
   async requestPermissions(): Promise<boolean> {
+    // Check if we're on a simulator first
+    if (isSimulator()) {
+      console.log('Running on simulator - audio recording not available');
+      return false;
+    }
+
     try {
       const status = await AudioModule.requestRecordingPermissionsAsync();
       console.log('Audio permission status:', status);
@@ -29,6 +36,11 @@ class AudioService {
   }
 
   async startRecording(): Promise<string> {
+    // Check for simulator first
+    if (isSimulator()) {
+      throw new Error(getSimulatorWarningMessage());
+    }
+
     if (!this.audioRecorder) {
       throw new Error('Audio recorder not initialized');
     }
@@ -37,6 +49,9 @@ class AudioService {
       // Request permissions first
       const hasPermission = await this.requestPermissions();
       if (!hasPermission) {
+        if (isSimulator()) {
+          throw new Error(getSimulatorWarningMessage());
+        }
         throw new Error('Microphone permission denied. Please enable microphone access in Settings.');
       }
 
@@ -60,7 +75,7 @@ class AudioService {
         if (error.message.includes('permission')) {
           throw new Error('Microphone permission required. Please enable it in Settings.');
         } else if (error.message.includes('simulator')) {
-          throw new Error('Audio recording may not work on simulator. Please test on a real device.');
+          throw new Error(getSimulatorWarningMessage());
         }
       }
       
