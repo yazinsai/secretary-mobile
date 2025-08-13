@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useAudioRecorder, RecordingPresets, AudioModule } from 'expo-audio';
+import { useAudioRecorder, RecordingPresets } from 'expo-audio';
 import Toast from 'react-native-toast-message';
 import { audioService } from '@/services/audio';
 import { Recording } from '@/types';
@@ -7,36 +7,9 @@ import { storageService } from '@/services/storage';
 import { queueService } from '@/services/queue';
 import { formatDuration } from '@/utils/helpers';
 
-// Custom recording options for better compatibility
-const recordingOptions = {
-  ...RecordingPresets.HIGH_QUALITY,
-  android: {
-    extension: '.m4a',
-    outputFormat: AudioModule.AndroidOutputFormat.MPEG_4,
-    audioEncoder: AudioModule.AndroidAudioEncoder.AAC,
-    sampleRate: 44100,
-    numberOfChannels: 1,
-    bitRate: 128000,
-  },
-  ios: {
-    extension: '.m4a',
-    outputFormat: AudioModule.IOSOutputFormat.MPEG4AAC,
-    audioQuality: AudioModule.IOSAudioQuality.HIGH,
-    sampleRate: 44100,
-    numberOfChannels: 1,
-    bitRate: 128000,
-    linearPCMBitDepth: 16,
-    linearPCMIsBigEndian: false,
-    linearPCMIsFloat: false,
-  },
-  web: {
-    mimeType: 'audio/webm',
-    bitsPerSecond: 128000,
-  },
-};
-
 export function useRecording() {
-  const audioRecorder = useAudioRecorder(recordingOptions);
+  // Use the HIGH_QUALITY preset as-is - it's already configured for m4a
+  const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const [currentRecordingId, setCurrentRecordingId] = useState<string | null>(null);
   const [duration, setDuration] = useState(0);
   const [error, setError] = useState<string | null>(null);

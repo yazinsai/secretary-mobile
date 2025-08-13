@@ -8,6 +8,7 @@ import { storageService } from './storage';
 import { supabaseService } from './supabase';
 import { groqService } from './groq';
 import { userSettingsService } from './userSettings';
+import { mockAudioService } from './mockAudio';
 
 class QueueService {
   private isProcessing = false;
@@ -96,11 +97,30 @@ class QueueService {
           const client = await supabaseService.getAuthClient();
           const { data: { user } } = await client.auth.getUser();
           
-          // Upload audio to Supabase
-          const audioUrl = await supabaseService.uploadAudio(recording);
+          let transcript: string;
+          let correctedTranscript: string;
+          let title: string;
+          let audioUrl: string | undefined;
           
-          // Transcribe and process with Groq
-          const { transcript, correctedTranscript, title } = await groqService.transcribeAndProcess(recording.fileUri, user?.id);
+          // Check if we're on simulator and use mock service
+          if (mockAudioService.isSimulator() && recording.fileUri.includes('ExpoAudio')) {
+            console.log('Using mock audio service for simulator');
+            // For simulator, generate mock transcript
+            const mockResult = await mockAudioService.stopMockRecording();
+            transcript = mockResult.transcript;
+            correctedTranscript = mockResult.transcript;
+            title = 'Mock Recording (Simulator)';
+            audioUrl = undefined; // No actual audio file
+          } else {
+            // Upload audio to Supabase
+            audioUrl = await supabaseService.uploadAudio(recording);
+            
+            // Transcribe and process with Groq
+            const result = await groqService.transcribeAndProcess(recording.fileUri, user?.id);
+            transcript = result.transcript;
+            correctedTranscript = result.correctedTranscript;
+            title = result.title;
+          }
           
           // Update recording with transcript and title
           await storageService.updateRecording(recording.id, {
