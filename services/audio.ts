@@ -11,6 +11,12 @@ class AudioService {
   async requestPermissions(): Promise<boolean> {
     try {
       const status = await AudioModule.requestRecordingPermissionsAsync();
+      console.log('Audio permission status:', status);
+      
+      if (!status.granted) {
+        console.log('Microphone permission denied. Status:', status);
+      }
+      
       return status.granted;
     } catch (error) {
       console.error('Failed to request audio permissions:', error);
@@ -31,12 +37,16 @@ class AudioService {
       // Request permissions first
       const hasPermission = await this.requestPermissions();
       if (!hasPermission) {
-        throw new Error('Microphone permission denied');
+        throw new Error('Microphone permission denied. Please enable microphone access in Settings.');
       }
 
+      console.log('Starting recording...');
+      
       // Prepare and start recording
       await this.audioRecorder.prepareToRecordAsync();
       await this.audioRecorder.record();
+      
+      console.log('Recording started successfully');
       
       this.recordingStartTime = Date.now();
       const recordingId = generateRecordingId();
@@ -44,6 +54,16 @@ class AudioService {
       return recordingId;
     } catch (error) {
       console.error('Failed to start recording:', error);
+      
+      // Provide more specific error messages
+      if (error instanceof Error) {
+        if (error.message.includes('permission')) {
+          throw new Error('Microphone permission required. Please enable it in Settings.');
+        } else if (error.message.includes('simulator')) {
+          throw new Error('Audio recording may not work on simulator. Please test on a real device.');
+        }
+      }
+      
       throw error;
     }
   }

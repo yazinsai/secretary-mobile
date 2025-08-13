@@ -160,9 +160,13 @@ class SupabaseService {
       const client = await this.getClient();
       
       // Get current user
-      const { data: { user } } = await client.auth.getUser();
+      const { data: { user }, error: authError } = await client.auth.getUser();
+      if (authError) {
+        console.error('Authentication error when fetching recordings:', authError);
+        return [];
+      }
       if (!user) {
-        console.log('User not authenticated, skipping database fetch');
+        console.log('User not authenticated, skipping database fetch. Please log in to see cloud recordings.');
         return [];
       }
       
@@ -182,7 +186,7 @@ class SupabaseService {
       return (data || []).map(record => ({
         id: record.id,
         timestamp: new Date(record.timestamp),
-        duration: record.duration,
+        duration: record.duration || 0,
         fileUri: record.audio_url || '',
         transcript: record.transcript || undefined,
         correctedTranscript: record.corrected_transcript || undefined,

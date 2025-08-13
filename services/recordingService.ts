@@ -14,6 +14,8 @@ class RecordingService {
         storageService.getRecordings(),
         supabaseService.getRecordings()
       ]);
+      
+      console.log(`Fetched ${localRecordings.length} local recordings and ${databaseRecordings.length} database recordings`);
 
       // Create a map for efficient lookup
       const recordingMap = new Map<string, MergedRecording>();

@@ -1,7 +1,6 @@
 import { StyleSheet, SectionList, View, Pressable, Alert, RefreshControl, Platform } from 'react-native';
 import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Audio } from 'expo-av';
 import Animated, {
   FadeInDown,
   FadeOut,
@@ -36,28 +35,11 @@ export default function RecordingsScreen() {
   const insets = useSafeAreaInsets();
   const [recordings, setRecordings] = useState<MergedRecording[]>([]);
   const [refreshing, setRefreshing] = useState(false);
-  const [playingId, setPlayingId] = useState<string | null>(null);
-  const soundRef = useRef<Audio.Sound | null>(null);
   const swipeableRefs = useRef<{ [key: string]: Swipeable | null }>({});
 
   useEffect(() => {
     loadRecordings();
     
-    // Configure audio mode for playback
-    Audio.setAudioModeAsync({
-      allowsRecordingIOS: false,
-      playsInSilentModeIOS: true,
-      shouldDuckAndroid: true,
-      playThroughEarpieceAndroid: false,
-      staysActiveInBackground: false,
-    });
-
-    // Cleanup on unmount
-    return () => {
-      if (soundRef.current) {
-        soundRef.current.unloadAsync();
-      }
-    };
   }, []);
 
   const loadRecordings = async () => {
@@ -73,54 +55,6 @@ export default function RecordingsScreen() {
     setRefreshing(true);
     await loadRecordings();
     setRefreshing(false);
-  };
-
-  const handlePlay = async (recording: MergedRecording) => {
-    try {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      
-      // Check if audio is available
-      if (!recording.fileUri) {
-        Alert.alert('Audio Not Available', 'This recording\'s audio file is not available on this device.');
-        return;
-      }
-      
-      // If we're currently playing this recording, stop it
-      if (playingId === recording.id) {
-        if (soundRef.current) {
-          await soundRef.current.stopAsync();
-          await soundRef.current.unloadAsync();
-          soundRef.current = null;
-        }
-        setPlayingId(null);
-        return;
-      }
-
-      // Stop any currently playing sound
-      if (soundRef.current) {
-        await soundRef.current.stopAsync();
-        await soundRef.current.unloadAsync();
-      }
-
-      // Create and play the new recording
-      const { sound } = await Audio.Sound.createAsync(
-        { uri: recording.fileUri },
-        { shouldPlay: true },
-        (status) => {
-          if (status.isLoaded && status.didJustFinish) {
-            // Playback finished
-            setPlayingId(null);
-          }
-        }
-      );
-
-      soundRef.current = sound;
-      setPlayingId(recording.id);
-    } catch (error) {
-      console.error('Playback error:', error);
-      Alert.alert('Playback Error', 'Failed to play recording');
-      setPlayingId(null);
-    }
   };
 
   const handleDelete = useCallback((recording: MergedRecording) => {
@@ -139,13 +73,6 @@ export default function RecordingsScreen() {
               // Close the swipeable
               swipeableRefs.current[recording.id]?.close();
               
-              // Stop playback if this recording is playing
-              if (playingId === recording.id && soundRef.current) {
-                await soundRef.current.stopAsync();
-                await soundRef.current.unloadAsync();
-                soundRef.current = null;
-                setPlayingId(null);
-              }
               
               await recordingService.deleteRecording(recording.id);
               if (recording.source === 'local' || recording.source === 'both') {
@@ -159,7 +86,7 @@ export default function RecordingsScreen() {
         },
       ]
     );
-  }, [playingId]);
+  }, []);
 
   const handleLongPress = useCallback((recording: MergedRecording) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -196,7 +123,6 @@ export default function RecordingsScreen() {
   };
 
   const RecordingItem = ({ item, index }: { item: MergedRecording; index: number }) => {
-    const isCurrentlyPlaying = playingId === item.id;
     const scale = useSharedValue(1);
 
     const animatedStyle = useAnimatedStyle(() => ({
@@ -231,25 +157,6 @@ export default function RecordingsScreen() {
             style={[animatedStyle, styles.recordingItemContainer]}
           >
             <View style={[styles.recordingCard, { backgroundColor: theme.card }]}>
-              {/* Play Button */}
-              <Pressable
-                style={[
-                  styles.playButton,
-                  { 
-                    backgroundColor: isCurrentlyPlaying ? theme.primary : theme.backgroundSecondary,
-                    opacity: !item.fileUri ? 0.5 : 1
-                  }
-                ]}
-                onPress={() => handlePlay(item)}
-                disabled={!item.fileUri}
-              >
-                <IconSymbol
-                  name={!item.fileUri ? 'play.slash.fill' : (isCurrentlyPlaying ? 'pause.fill' : 'play.fill')}
-                  size={16}
-                  color={!item.fileUri ? theme.textSecondary : (isCurrentlyPlaying ? 'white' : theme.primary)}
-                />
-              </Pressable>
-
               {/* Content */}
               <View style={styles.recordingContent}>
                 <View style={styles.recordingHeader}>
@@ -292,15 +199,9 @@ export default function RecordingsScreen() {
                     </View>
                   )}
                   
-                  {/* Sync Status */}
-                  {item.source === 'database' && (
-                    <IconSymbol name="icloud.fill" size={14} color={theme.primary} />
-                  )}
-                  {item.source === 'both' && (
-                    <IconSymbol name="checkmark.icloud.fill" size={14} color={theme.success} />
-                  )}
+                  {/* Offline Status - only show for unsynced local recordings */}
                   {item.source === 'local' && item.syncStatus !== 'synced' && (
-                    <IconSymbol name="iphone" size={14} color={theme.textSecondary} />
+                    <IconSymbol name="wifi.slash" size={14} color={theme.textSecondary} />
                   )}
                   
                   {/* Webhook Status */}
@@ -411,14 +312,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: Spacing.md,
     borderRadius: BorderRadius.md,
-  },
-  playButton: {
-    width: 36,
-    height: 36,
-    borderRadius: BorderRadius.full,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: Spacing.md,
   },
   recordingContent: {
     flex: 1,

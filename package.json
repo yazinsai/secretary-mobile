@@ -8,7 +8,8 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "lint": "expo lint",
-    "import-storage": "bun scripts/import-storage-to-db.ts"
+    "import-storage": "bun scripts/import-storage-to-db.ts",
+    "process-recordings": "bun scripts/process-existing-recordings.ts"
   },
   "dependencies": {
     "@expo/vector-icons": "^14.1.0",

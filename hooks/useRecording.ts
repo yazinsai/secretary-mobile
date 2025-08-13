@@ -12,6 +12,7 @@ export function useRecording() {
   const [currentRecordingId, setCurrentRecordingId] = useState<string | null>(null);
   const [duration, setDuration] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  const [isRecordingState, setIsRecordingState] = useState(false);
 
   // Set the recorder in the audio service
   useEffect(() => {
@@ -21,7 +22,7 @@ export function useRecording() {
   useEffect(() => {
     let interval: NodeJS.Timeout;
     
-    if (audioRecorder.isRecording) {
+    if (isRecordingState) {
       const startTime = Date.now();
       interval = setInterval(() => {
         setDuration((Date.now() - startTime) / 1000);
@@ -33,7 +34,7 @@ export function useRecording() {
     return () => {
       if (interval) clearInterval(interval);
     };
-  }, [audioRecorder.isRecording]);
+  }, [isRecordingState]);
 
   const startRecording = useCallback(async () => {
     try {
@@ -41,8 +42,22 @@ export function useRecording() {
       
       const recordingId = await audioService.startRecording();
       setCurrentRecordingId(recordingId);
+      setIsRecordingState(true);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to start recording');
+      const errorMessage = err instanceof Error ? err.message : 'Failed to start recording';
+      setError(errorMessage);
+      setIsRecordingState(false);
+      
+      // Show error toast
+      Toast.show({
+        type: 'error',
+        text1: 'Recording Failed',
+        text2: errorMessage,
+        position: 'top',
+        visibilityTime: 4000,
+      });
+      
+      console.error('Recording error:', err);
     }
   }, []);
 
@@ -78,13 +93,15 @@ export function useRecording() {
       
       setCurrentRecordingId(null);
       setDuration(0);
+      setIsRecordingState(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to stop recording');
+      setIsRecordingState(false);
     }
   }, [currentRecordingId]);
 
   return {
-    isRecording: audioRecorder.isRecording,
+    isRecording: isRecordingState,
     duration,
     error,
     startRecording,
