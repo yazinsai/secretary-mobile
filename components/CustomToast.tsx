@@ -9,7 +9,7 @@ export const toastConfig: ToastConfig = {
   success: ({ text1, text2, props }) => (
     <View style={[styles.toast, styles.successToast]}>
       <View style={styles.iconContainer}>
-        <IconSymbol name="checkmark.circle.fill" size={24} color={Colors.light.primary} />
+        <IconSymbol name="checkmark.circle" size={24} color={Colors.light.primary} />
       </View>
       <View style={styles.textContainer}>
         <ThemedText type="bodyBold" style={styles.title}>
@@ -27,7 +27,7 @@ export const toastConfig: ToastConfig = {
   error: ({ text1, text2, props }) => (
     <View style={[styles.toast, styles.errorToast]}>
       <View style={styles.iconContainer}>
-        <IconSymbol name="exclamationmark.circle.fill" size={24} color={Colors.light.error} />
+        <IconSymbol name="exclamationmark.circle" size={24} color={Colors.light.error} />
       </View>
       <View style={styles.textContainer}>
         <ThemedText type="bodyBold" style={styles.title}>
@@ -45,7 +45,7 @@ export const toastConfig: ToastConfig = {
   info: ({ text1, text2, props }) => (
     <View style={[styles.toast, styles.infoToast]}>
       <View style={styles.iconContainer}>
-        <IconSymbol name="info.circle.fill" size={24} color={Colors.light.info} />
+        <IconSymbol name="info.circle" size={24} color={Colors.light.info} />
       </View>
       <View style={styles.textContainer}>
         <ThemedText type="bodyBold" style={styles.title}>

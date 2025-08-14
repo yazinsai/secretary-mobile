@@ -28,9 +28,17 @@ class GroqService {
       // Create form data
       const formData = new FormData();
       
-      // Determine file extension from URI
-      const extension = fileUri.split('.').pop() || 'm4a';
+      // Determine file extension from URI - handle case where extension might be missing
+      let extension = 'm4a'; // Default to m4a
+      const uriParts = fileUri.split('.');
+      const lastPart = uriParts[uriParts.length - 1];
+      // Check if the last part is a valid extension (not too long, no special chars)
+      if (lastPart && lastPart.length <= 5 && /^[a-zA-Z0-9]+$/.test(lastPart)) {
+        extension = lastPart;
+      }
       const filename = `audio.${extension}`;
+      
+      console.log('Using filename for transcription:', filename);
       
       // For Edge Functions, we need to send the base64 data
       formData.append('file', base64Audio);

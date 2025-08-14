@@ -30,7 +30,7 @@ export default function TabLayout() {
         name="index"
         options={{
           title: 'Record',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="mic.fill" color={color} />,
+          tabBarIcon: ({ color }) => <IconSymbol size={28} name="mic" color={color} />,
         }}
       />
       <Tabs.Screen
@@ -44,7 +44,7 @@ export default function TabLayout() {
         name="settings"
         options={{
           title: 'Settings',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="gearshape.fill" color={color} />,
+          tabBarIcon: ({ color }) => <IconSymbol size={28} name="gearshape" color={color} />,
         }}
       />
     </Tabs>

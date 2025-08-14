@@ -217,7 +217,7 @@ export default function RecordScreen() {
           >
             <IconSymbol 
               size={64} 
-              name={isRecording ? "stop.fill" : "mic.fill"} 
+              name={isRecording ? "stop" : "mic"} 
               color={isRecording ? theme.primary : theme.accent}
             />
           </Pressable>
@@ -237,7 +237,7 @@ export default function RecordScreen() {
       {showSuccess && (
         <Animated.View style={[styles.successContainer, successAnimatedStyle]}>
           <View style={[styles.successCard, { backgroundColor: theme.card, borderColor: theme.primary + '20' }]}>
-            <IconSymbol name="checkmark.circle.fill" size={48} color={theme.primary} />
+            <IconSymbol name="checkmark.circle" size={48} color={theme.primary} />
             <ThemedText type="subheading" style={[styles.successText, { color: theme.text }]}>
               Saved
             </ThemedText>

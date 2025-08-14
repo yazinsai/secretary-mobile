@@ -19,8 +19,21 @@ const MAPPING = {
   'chevron.left.forwardslash.chevron.right': 'code',
   'chevron.right': 'chevron-right',
   'mic.fill': 'mic',
+  'mic': 'mic',
   'list.bullet': 'list',
   'gearshape.fill': 'settings',
+  'gearshape': 'settings',
+  'checkmark.circle.fill': 'check-circle',
+  'checkmark.circle': 'check-circle',
+  'exclamationmark.circle.fill': 'error',
+  'exclamationmark.circle': 'error',
+  'info.circle.fill': 'info',
+  'info.circle': 'info',
+  'stop.fill': 'stop',
+  'stop': 'stop',
+  'trash': 'delete',
+  'wifi.slash': 'wifi-off',
+  'plus': 'add',
 } as IconMapping;
 
 /**
