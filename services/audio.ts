@@ -54,27 +54,10 @@ class AudioService {
       }
       
       // Prepare recording with options
+      // The useAudioRecorder hook already uses RecordingPresets.HIGH_QUALITY
+      // So we just need to prepare without additional options
       const prepared = await this.audioRecorder.prepareToRecordAsync({
         keepAudioActiveHint: true,
-        android: {
-          extension: '.m4a',
-          outputFormat: 2, // MPEG_4
-          audioEncoder: 3, // AAC
-          sampleRate: 44100,
-          numberOfChannels: 1,
-          bitRate: 128000,
-        },
-        ios: {
-          extension: '.m4a',
-          audioQuality: 127, // MAX
-          sampleRate: 44100,
-          numberOfChannels: 1,
-          bitRate: 128000,
-        },
-        web: {
-          mimeType: 'audio/webm',
-          bitsPerSecond: 128000,
-        },
       });
       
       console.log('Prepared:', prepared);
