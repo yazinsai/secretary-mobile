@@ -1,6 +1,7 @@
 import { StyleSheet, ScrollView, View, Alert, KeyboardAvoidingView, Platform, Pressable } from 'react-native';
 import { useState, useEffect } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useRouter } from 'expo-router';
 import Animated, {
   FadeInDown,
   FadeIn,
@@ -15,7 +16,6 @@ import { DictionaryInput } from '@/components/ui/DictionaryInput';
 import { IconSymbol } from '@/components/ui/IconSymbol';
 import { Settings } from '@/types';
 import { userSettingsService } from '@/services/userSettings';
-import { syncService } from '@/services/sync';
 import { useAuth } from '@/contexts/AuthContext';
 import { DEFAULT_SETTINGS } from '@/utils/constants';
 import { useColorScheme } from '@/hooks/useColorScheme';
@@ -71,6 +71,7 @@ export default function SettingsScreen() {
   const colorScheme = useColorScheme();
   const theme = Colors[colorScheme ?? 'light'];
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   const { user, signOut } = useAuth();
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
   const [hasChanges, setHasChanges] = useState(false);
@@ -109,21 +110,52 @@ export default function SettingsScreen() {
       await userSettingsService.saveSettings(settings);
       setHasChanges(false);
       
-      Alert.alert('Success', 'Settings saved successfully');
+      Toast.show({
+        type: 'success',
+        text1: 'Settings saved',
+        position: 'top',
+        visibilityTime: 2000,
+      });
     } catch (error) {
-      Alert.alert('Error', 'Failed to save settings');
+      Toast.show({
+        type: 'error',
+        text1: 'Failed to save settings',
+        position: 'top',
+        visibilityTime: 3000,
+      });
     } finally {
       setIsSaving(false);
     }
   };
 
+  const handleClose = () => {
+    if (hasChanges) {
+      Alert.alert(
+        'Unsaved Changes',
+        'You have unsaved changes. Do you want to save them?',
+        [
+          { text: 'Discard', style: 'destructive', onPress: () => router.back() },
+          { text: 'Save', onPress: async () => {
+            await saveSettings();
+            router.back();
+          }},
+        ]
+      );
+    } else {
+      router.back();
+    }
+  };
 
   return (
     <ThemedView style={styles.container}>
+      {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + Spacing.md }]}>
-        <Animated.View entering={FadeInDown}>
+        <View style={styles.headerContent}>
           <ThemedText type="title" style={styles.title}>Settings</ThemedText>
-        </Animated.View>
+          <Pressable onPress={handleClose} style={styles.closeButton}>
+            <IconSymbol name="xmark" size={24} color={theme.text} />
+          </Pressable>
+        </View>
       </View>
       
       <KeyboardAvoidingView 
@@ -142,7 +174,7 @@ export default function SettingsScreen() {
             </ThemedText>
             <View style={[styles.groupContainer, { backgroundColor: theme.card }]}>
               <SettingRow
-                icon="person.circle"
+                icon="person"
                 title={user ? user.email! : 'Not logged in'}
                 subtitle="Manage your account"
                 showBorder={false}
@@ -160,6 +192,7 @@ export default function SettingsScreen() {
                               style: 'destructive',
                               onPress: async () => {
                                 await signOut();
+                                router.back();
                               },
                             },
                           ]
@@ -256,6 +289,18 @@ const styles = StyleSheet.create({
   },
   header: {
     paddingHorizontal: Spacing.xl,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(0,0,0,0.05)',
+  },
+  headerContent: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingBottom: Spacing.md,
+  },
+  closeButton: {
+    padding: Spacing.sm,
+    margin: -Spacing.sm,
   },
   scrollView: {
     flex: 1,
@@ -266,7 +311,6 @@ const styles = StyleSheet.create({
   title: {
     fontSize: Typography.sizes.xxxl,
     fontWeight: Typography.weights.bold,
-    marginBottom: Spacing.lg,
     lineHeight: Typography.sizes.xxxl * 1.3,
   },
   groupTitle: {

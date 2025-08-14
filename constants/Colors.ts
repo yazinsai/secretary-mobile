@@ -1,83 +1,83 @@
 /**
- * Wise-inspired color palette
+ * Purple-themed color palette
  */
 
 export const Colors = {
   light: {
-    // Primary colors - Wise green
-    primary: '#22C55E',           // Strong green with proper contrast (WCAG AA compliant)
-    primaryLight: '#E6F9DC',      // Light green for backgrounds
-    primaryDark: '#16A34A',       // Darker green for emphasis
-    accent: '#163300',            // Dark green accent
+    // Primary colors - Purple/Violet theme
+    primary: '#2B28D7',           // Strong purple with proper contrast (WCAG AA compliant)
+    primaryLight: '#EDEDFD',      // Light purple for backgrounds
+    primaryDark: '#1A189E',       // Darker purple for emphasis
+    accent: '#FFFFFF',            // White accent for contrast
     
     // Base colors
-    text: '#163300',              // Very dark green/black for text
-    textSecondary: '#5D7052',     // Medium gray-green for secondary text
-    textMuted: '#8B9A82',         // Muted text
+    text: '#1A1A2E',              // Very dark blue-black for text
+    textSecondary: '#5D5D7A',     // Medium gray-purple for secondary text
+    textMuted: '#8B8BA3',         // Muted text
     background: '#FFFFFF',        // Pure white background
-    backgroundSecondary: '#F7FAF5', // Slight green tinted background
-    backgroundElevated: '#FAFFFE', // Elevated surface
+    backgroundSecondary: '#F7F7FD', // Slight purple tinted background
+    backgroundElevated: '#FAFAFF', // Elevated surface
     
     // UI colors
     card: '#FFFFFF',              // White cards
-    cardHover: '#F7FAF5',         // Card hover state
-    cardBorder: '#E8EDE5',        // Subtle green-gray border
-    inputBackground: '#F7FAF5',   // Light green-gray input background
-    inputBorder: '#D4DED0',       // Green-gray border
-    inputBorderFocus: '#9FE870',  // Green focus border
+    cardHover: '#F7F7FD',         // Card hover state
+    cardBorder: '#E8E8F5',        // Subtle purple-gray border
+    inputBackground: '#F7F7FD',   // Light purple-gray input background
+    inputBorder: '#D4D4ED',       // Purple-gray border
+    inputBorderFocus: '#2B28D7',  // Purple focus border
     
     // Status colors
-    success: '#9FE870',           // Wise green
+    success: '#22C55E',           // Green
     error: '#FF5A5F',             // Softer red
     warning: '#FFB400',           // Orange
     info: '#00A9FF',              // Blue
     
     // Navigation
-    tabIconDefault: '#8B9A82',    // Muted icon
-    tabIconSelected: '#163300',   // Dark green selected
+    tabIconDefault: '#8B8BA3',    // Muted icon
+    tabIconSelected: '#2B28D7',   // Purple selected
     
     // Additional
-    divider: '#E8EDE5',
-    overlay: 'rgba(22, 51, 0, 0.5)',
+    divider: '#E8E8F5',
+    overlay: 'rgba(26, 26, 46, 0.5)',
     
     // Shadows
-    shadow: 'rgba(22, 51, 0, 0.08)',
+    shadow: 'rgba(26, 26, 46, 0.08)',
   },
   dark: {
-    // Primary colors - Wise green adapted for dark mode
-    primary: '#22C55E',           // Strong green for dark mode
-    primaryLight: '#2A3D1F',      // Dark green for backgrounds
-    primaryDark: '#4ADE80',       // Brighter green for emphasis
-    accent: '#22C55E',            // Green accent
+    // Primary colors - Purple adapted for dark mode
+    primary: '#6B68FF',           // Bright purple for dark mode
+    primaryLight: '#2A2A4D',      // Dark purple for backgrounds
+    primaryDark: '#8B88FF',       // Brighter purple for emphasis
+    accent: '#6B68FF',            // Purple accent
     
     // Base colors
     text: '#FFFFFF',              // White text
-    textSecondary: '#C1CFBA',     // Light green-gray text
-    textMuted: '#8B9A82',         // Muted text
-    background: '#0B1408',        // Very dark green-black background
-    backgroundSecondary: '#162211', // Slightly lighter background
-    backgroundElevated: '#1F2E19', // Elevated surface
+    textSecondary: '#C1C1E0',     // Light purple-gray text
+    textMuted: '#8B8BA3',         // Muted text
+    background: '#0E0E1A',        // Very dark purple-black background
+    backgroundSecondary: '#1A1A2E', // Slightly lighter background
+    backgroundElevated: '#25253D', // Elevated surface
     
     // UI colors
-    card: '#162211',              // Dark cards
-    cardHover: '#1F2E19',         // Card hover state
-    cardBorder: '#2A3D1F',        // Dark green border
-    inputBackground: '#1F2E19',   // Dark input background
-    inputBorder: '#2A3D1F',       // Dark border
-    inputBorderFocus: '#9FE870',  // Green focus border
+    card: '#1A1A2E',              // Dark cards
+    cardHover: '#25253D',         // Card hover state
+    cardBorder: '#2A2A4D',        // Dark purple border
+    inputBackground: '#25253D',   // Dark input background
+    inputBorder: '#2A2A4D',       // Dark border
+    inputBorderFocus: '#6B68FF',  // Purple focus border
     
     // Status colors
-    success: '#9FE870',           // Wise green
+    success: '#22C55E',           // Green
     error: '#FF5A5F',             // Red
     warning: '#FFB400',           // Orange
     info: '#00A9FF',              // Blue
     
     // Navigation
-    tabIconDefault: '#5D7052',    // Muted icon
-    tabIconSelected: '#9FE870',   // Green selected
+    tabIconDefault: '#5D5D7A',    // Muted icon
+    tabIconSelected: '#6B68FF',   // Purple selected
     
     // Additional
-    divider: '#2A3D1F',
+    divider: '#2A2A4D',
     overlay: 'rgba(0, 0, 0, 0.6)',
     
     // Shadows

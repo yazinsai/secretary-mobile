@@ -37,14 +37,21 @@ function RootLayoutNav() {
       router.replace('/auth/login');
     } else if (user && inAuthGroup) {
       // Redirect to main app if authenticated and in auth screens
-      router.replace('/(tabs)');
+      router.replace('/');
     }
   }, [user, segments, loading]);
 
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
       <Stack>
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+        <Stack.Screen name="index" options={{ headerShown: false }} />
+        <Stack.Screen 
+          name="settings" 
+          options={{ 
+            presentation: 'modal',
+            headerShown: false,
+          }} 
+        />
         <Stack.Screen name="auth/login" options={{ headerShown: false }} />
         <Stack.Screen name="auth/signup" options={{ headerShown: false }} />
         <Stack.Screen name="auth/forgot-password" options={{ headerShown: false }} />

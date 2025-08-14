@@ -20,6 +20,7 @@ const MAPPING = {
   'chevron.right': 'chevron-right',
   'mic.fill': 'mic',
   'mic': 'mic',
+  'mic.slash': 'mic-off',
   'list.bullet': 'list',
   'gearshape.fill': 'settings',
   'gearshape': 'settings',
@@ -34,6 +35,11 @@ const MAPPING = {
   'trash': 'delete',
   'wifi.slash': 'wifi-off',
   'plus': 'add',
+  'person.circle': 'account-circle',
+  'person': 'person',
+  'book': 'book',
+  'xmark': 'close',
+  'arrow.up.circle': 'upload',
 } as IconMapping;
 
 /**

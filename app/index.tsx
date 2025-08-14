@@ -1,45 +1,52 @@
-import { StyleSheet, SectionList, View, Pressable, Alert, RefreshControl, Platform } from 'react-native';
-import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
+import { StyleSheet, View, Pressable, SectionList, Alert, RefreshControl, Dimensions, Text } from 'react-native';
+import { useState, useEffect, useRef, useCallback, useMemo, memo } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, {
   FadeInDown,
   FadeOut,
   Layout,
-  SlideInLeft,
   SlideOutLeft,
   useAnimatedStyle,
   useSharedValue,
   withSpring,
-  withTiming,
-  runOnJS,
+  withSequence,
+  interpolate,
 } from 'react-native-reanimated';
 import { Swipeable } from 'react-native-gesture-handler';
 import * as Haptics from 'expo-haptics';
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
+import { UserAvatar } from '@/components/UserAvatar';
 import { IconSymbol } from '@/components/ui/IconSymbol';
-import { Recording } from '@/types';
-import { storageService } from '@/services/storage';
-import { audioService } from '@/services/audio';
-import { syncService } from '@/services/sync';
 import { recordingService, MergedRecording } from '@/services/recordingService';
-import { formatDate, formatDuration, groupRecordingsByDate, formatTimeOnly } from '@/utils/helpers';
+import { audioService } from '@/services/audio';
+import { formatDuration, groupRecordingsByDate, formatTimeOnly } from '@/utils/helpers';
 import { useColorScheme } from '@/hooks/useColorScheme';
-import { Colors, Spacing, BorderRadius, Typography, Shadows } from '@/constants/Colors';
+import { Colors, Spacing, BorderRadius, Typography } from '@/constants/Colors';
+import { useRecording } from '@/hooks/useRecording';
 
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
-export default function RecordingsScreen() {
+export default function MainScreen() {
   const colorScheme = useColorScheme();
   const theme = Colors[colorScheme ?? 'light'];
   const insets = useSafeAreaInsets();
   const [recordings, setRecordings] = useState<MergedRecording[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const swipeableRefs = useRef<{ [key: string]: Swipeable | null }>({});
+  
+  // Recording state
+  const { isRecording, duration, error, startRecording, stopRecording } = useRecording();
+  const [isSaving, setIsSaving] = useState(false);
+  const [showSuccess, setShowSuccess] = useState(false);
+  
+  // Animation values
+  const buttonScale = useSharedValue(1);
+  const successScale = useSharedValue(0);
 
   useEffect(() => {
     loadRecordings();
-    
   }, []);
 
   const loadRecordings = async () => {
@@ -70,10 +77,7 @@ export default function RecordingsScreen() {
           style: 'destructive',
           onPress: async () => {
             try {
-              // Close the swipeable
               swipeableRefs.current[recording.id]?.close();
-              
-              
               await recordingService.deleteRecording(recording.id);
               if (recording.source === 'local' || recording.source === 'both') {
                 await audioService.deleteRecording(recording.fileUri);
@@ -106,7 +110,62 @@ export default function RecordingsScreen() {
     Alert.alert('Recording Options', undefined, actions);
   }, [handleDelete]);
 
-  const renderRightActions = (recording: MergedRecording) => {
+  const handleRecordPressIn = () => {
+    buttonScale.value = withSpring(0.88, { 
+      damping: 10, 
+      stiffness: 400 
+    });
+  };
+
+  const handleRecordPressOut = () => {
+    buttonScale.value = withSpring(1, { 
+      damping: 8,
+      stiffness: 200,
+      velocity: 2
+    });
+  };
+
+  const handleRecordPress = async () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    
+    if (isRecording) {
+      setIsSaving(true);
+      await stopRecording();
+      
+      // Trigger success animation
+      setShowSuccess(true);
+      successScale.value = withSequence(
+        withSpring(1.05, { 
+          damping: 10,
+          stiffness: 180,
+        }),
+        withSpring(1, { 
+          damping: 12,
+          stiffness: 200,
+        })
+      );
+      
+      setTimeout(() => {
+        setIsSaving(false);
+        setShowSuccess(false);
+        successScale.value = withSpring(0, { damping: 15, stiffness: 200 });
+        loadRecordings(); // Refresh the list
+      }, 1800);
+    } else {
+      await startRecording();
+    }
+  };
+
+  const buttonAnimatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: buttonScale.value }],
+  }));
+
+  const successAnimatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: successScale.value }],
+    opacity: interpolate(successScale.value, [0, 0.5, 1], [0, 1, 1]),
+  }));
+
+  const renderRightActions = useCallback((recording: MergedRecording) => {
     return (
       <Animated.View
         entering={FadeInDown}
@@ -120,9 +179,9 @@ export default function RecordingsScreen() {
         </Pressable>
       </Animated.View>
     );
-  };
+  }, [theme.error, handleDelete]);
 
-  const RecordingItem = ({ item, index }: { item: MergedRecording; index: number }) => {
+  const RecordingItem = memo(({ item, index }: { item: MergedRecording; index: number }) => {
     const scale = useSharedValue(1);
 
     const animatedStyle = useAnimatedStyle(() => ({
@@ -157,7 +216,6 @@ export default function RecordingsScreen() {
             style={[animatedStyle, styles.recordingItemContainer]}
           >
             <View style={[styles.recordingCard, { backgroundColor: theme.card }]}>
-              {/* Content */}
               <View style={styles.recordingContent}>
                 <View style={styles.recordingHeader}>
                   <ThemedText style={styles.recordingTime}>
@@ -185,7 +243,6 @@ export default function RecordingsScreen() {
 
                 {/* Status Indicators */}
                 <View style={styles.statusRow}>
-                  {/* Upload Status */}
                   {item.status !== 'uploaded' && (
                     <View style={[styles.statusBadge, { backgroundColor: theme.backgroundSecondary }]}>
                       <IconSymbol
@@ -199,12 +256,10 @@ export default function RecordingsScreen() {
                     </View>
                   )}
                   
-                  {/* Offline Status - only show for unsynced local recordings */}
                   {item.source === 'local' && item.syncStatus !== 'synced' && (
                     <IconSymbol name="wifi.slash" size={14} color={theme.textSecondary} />
                   )}
                   
-                  {/* Webhook Status */}
                   {item.webhookStatus === 'failed' && (
                     <View style={[styles.webhookDot, { backgroundColor: theme.error }]} />
                   )}
@@ -215,20 +270,37 @@ export default function RecordingsScreen() {
         </Swipeable>
       </Animated.View>
     );
-  };
+  });
 
   const sections = useMemo(() => {
     return groupRecordingsByDate(recordings);
   }, [recordings]);
 
+  const renderItem = useCallback(({ item, index }: { item: MergedRecording; index: number }) => (
+    <RecordingItem item={item} index={index} />
+  ), []);
+
+  const renderSectionHeader = useCallback(({ section: { date } }: any) => (
+    <View style={[styles.sectionHeader, { backgroundColor: theme.background }]}>
+      <ThemedText style={[styles.sectionTitle, { color: theme.textSecondary }]}>
+        {date}
+      </ThemedText>
+    </View>
+  ), [theme.background, theme.textSecondary]);
+
   return (
     <ThemedView style={styles.container}>
+      {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + Spacing.md }]}>
-        <Animated.View entering={FadeInDown}>
-          <ThemedText type="title" style={styles.title}>Recordings</ThemedText>
-        </Animated.View>
+        <View style={styles.headerContent}>
+          <Animated.View entering={FadeInDown}>
+            <ThemedText type="title" style={styles.title}>Recordings</ThemedText>
+          </Animated.View>
+          <UserAvatar />
+        </View>
       </View>
       
+      {/* Recordings List */}
       {recordings.length === 0 ? (
         <Animated.View
           entering={FadeInDown.delay(200)}
@@ -252,14 +324,8 @@ export default function RecordingsScreen() {
         <SectionList
           sections={sections}
           keyExtractor={(item) => item.id}
-          renderItem={({ item, index }) => <RecordingItem item={item} index={index} />}
-          renderSectionHeader={({ section: { date } }) => (
-            <View style={[styles.sectionHeader, { backgroundColor: theme.background }]}>
-              <ThemedText style={[styles.sectionTitle, { color: theme.textSecondary }]}>
-                {date}
-              </ThemedText>
-            </View>
-          )}
+          renderItem={renderItem}
+          renderSectionHeader={renderSectionHeader}
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
@@ -272,6 +338,76 @@ export default function RecordingsScreen() {
           stickySectionHeadersEnabled={true}
         />
       )}
+
+      {/* Recording Timer Overlay */}
+      {isRecording && (
+        <Animated.View 
+          entering={FadeInDown}
+          style={[styles.recordingOverlay, { backgroundColor: theme.overlay }]}
+        >
+          <View style={[styles.timerCard, { backgroundColor: theme.card }]}>
+            <View style={styles.pulseIndicator}>
+              <View style={[styles.pulseDot, { backgroundColor: theme.error }]} />
+            </View>
+            <Text style={[styles.timerText, { color: theme.text }]}>
+              {Math.floor(duration / 60)}:{(duration % 60).toString().padStart(2, '0')}
+            </Text>
+            <Text style={[styles.recordingLabel, { color: theme.textSecondary }]}>
+              Recording...
+            </Text>
+          </View>
+        </Animated.View>
+      )}
+
+      {/* Success Message */}
+      {showSuccess && (
+        <Animated.View style={[styles.successOverlay, successAnimatedStyle]}>
+          <View style={[styles.successCard, { backgroundColor: theme.card, borderColor: theme.primary + '20' }]}>
+            <IconSymbol name="checkmark.circle" size={48} color={theme.primary} />
+            <ThemedText type="subheading" style={[styles.successText, { color: theme.text }]}>
+              Saved
+            </ThemedText>
+          </View>
+        </Animated.View>
+      )}
+
+      {/* Record Button - Fixed at bottom */}
+      <View style={[styles.recordButtonContainer, { paddingBottom: insets.bottom + Spacing.xl }]}>
+        <Animated.View style={buttonAnimatedStyle}>
+          <Pressable
+            style={[
+              styles.recordButton,
+              { 
+                backgroundColor: isRecording ? theme.error : theme.primary,
+              }
+            ]}
+            onPressIn={handleRecordPressIn}
+            onPressOut={handleRecordPressOut}
+            onPress={handleRecordPress}
+            disabled={isSaving}
+          >
+            <IconSymbol 
+              size={32} 
+              name={isRecording ? "stop.fill" : "mic.fill"} 
+              color={theme.accent}
+            />
+          </Pressable>
+        </Animated.View>
+      </View>
+
+      {/* Error Message */}
+      {error && (
+        <Animated.View
+          entering={FadeInDown}
+          exiting={FadeOut}
+          style={[styles.errorCard, { backgroundColor: theme.error + '15' }]}
+        >
+          <IconSymbol name="exclamationmark.circle" size={20} color={theme.error} />
+          <ThemedText style={[styles.errorText, { color: theme.error }]}>
+            {error}
+          </ThemedText>
+        </Animated.View>
+      )}
     </ThemedView>
   );
 }
@@ -282,11 +418,16 @@ const styles = StyleSheet.create({
   },
   header: {
     paddingHorizontal: Spacing.xl,
+    paddingBottom: Spacing.md,
+  },
+  headerContent: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
   },
   title: {
     fontSize: Typography.sizes.xxxl,
     fontWeight: Typography.weights.bold,
-    marginBottom: Spacing.md,
     lineHeight: Typography.sizes.xxxl * 1.3,
   },
   sectionHeader: {
@@ -301,7 +442,7 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
   },
   listContent: {
-    paddingBottom: Spacing.xl,
+    paddingBottom: 120, // Space for the record button
   },
   recordingItemContainer: {
     paddingHorizontal: Spacing.xl,
@@ -395,5 +536,108 @@ const styles = StyleSheet.create({
   emptySubtext: {
     fontSize: Typography.sizes.base,
     textAlign: 'center',
+  },
+  recordButtonContainer: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+  },
+  recordButton: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+    elevation: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 12,
+  },
+  recordingOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  timerCard: {
+    paddingVertical: Spacing.xxl,
+    paddingHorizontal: Spacing.xxxl,
+    borderRadius: BorderRadius.xxl,
+    alignItems: 'center',
+    elevation: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+  },
+  timerText: {
+    fontSize: Typography.sizes.huge,
+    lineHeight: Typography.sizes.huge * 1.2,
+    fontWeight: Typography.weights.bold,
+    marginTop: Spacing.lg,
+  },
+  recordingLabel: {
+    fontSize: Typography.sizes.sm,
+    marginTop: Spacing.sm,
+    letterSpacing: 0.5,
+  },
+  pulseIndicator: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pulseDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+  },
+  successOverlay: {
+    position: 'absolute',
+    top: '40%',
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+  },
+  successCard: {
+    paddingVertical: Spacing.xxl,
+    paddingHorizontal: Spacing.xxxl,
+    borderRadius: BorderRadius.xxl,
+    alignItems: 'center',
+    borderWidth: 1,
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    flexDirection: 'row',
+    gap: Spacing.lg,
+  },
+  successText: {
+    letterSpacing: -0.5,
+  },
+  errorCard: {
+    position: 'absolute',
+    bottom: 120,
+    marginHorizontal: Spacing.xl,
+    left: Spacing.xl,
+    right: Spacing.xl,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: Spacing.lg,
+    paddingHorizontal: Spacing.xl,
+    borderRadius: BorderRadius.lg,
+    gap: Spacing.md,
+  },
+  errorText: {
+    flex: 1,
+    fontSize: Typography.sizes.sm,
   },
 });
