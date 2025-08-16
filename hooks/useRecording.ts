@@ -1,109 +1,144 @@
-import { useState, useEffect, useCallback } from 'react';
-import { useAudioRecorder, RecordingPresets } from 'expo-audio';
-import Toast from 'react-native-toast-message';
-import { audioService } from '@/services/audio';
-import { Recording } from '@/types';
+import { useState, useRef } from 'react';
+import { Alert } from 'react-native';
+import { Audio } from 'expo-av';
+import * as FileSystem from 'expo-file-system';
+import { generateRecordingId } from '@/utils/helpers';
 import { storageService } from '@/services/storage';
 import { queueService } from '@/services/queue';
-import { formatDuration } from '@/utils/helpers';
+import { mockAudioService } from '@/services/mockAudio';
+import { Recording } from '@/types';
 
 export function useRecording() {
-  // Use the HIGH_QUALITY preset as-is - it's already configured for m4a
-  const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
-  const [currentRecordingId, setCurrentRecordingId] = useState<string | null>(null);
-  const [duration, setDuration] = useState(0);
+  const [isRecording, setIsRecording] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [isRecordingState, setIsRecordingState] = useState(false);
+  const recordingRef = useRef<Audio.Recording | null>(null);
+  const startTime = useRef<number>(0);
 
-  // Set the recorder in the audio service
-  useEffect(() => {
-    audioService.setRecorder(audioRecorder);
-  }, [audioRecorder]);
-
-  useEffect(() => {
-    let interval: NodeJS.Timeout;
-    
-    if (isRecordingState) {
-      const startTime = Date.now();
-      interval = setInterval(() => {
-        setDuration(Math.floor((Date.now() - startTime) / 1000));
-      }, 1000);
-    } else {
-      setDuration(0);
-    }
-
-    return () => {
-      if (interval) clearInterval(interval);
-    };
-  }, [isRecordingState]);
-
-  const startRecording = useCallback(async () => {
+  const startRecording = async () => {
     try {
       setError(null);
       
-      const recordingId = await audioService.startRecording();
-      setCurrentRecordingId(recordingId);
-      setIsRecordingState(true);
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Failed to start recording';
-      setError(errorMessage);
-      setIsRecordingState(false);
-      
-      // Show error toast
-      Toast.show({
-        type: 'error',
-        text1: 'Recording Failed',
-        text2: errorMessage,
-        position: 'top',
-        visibilityTime: 4000,
-      });
-      
-      console.error('Recording error:', err);
-    }
-  }, []);
-
-  const stopRecording = useCallback(async () => {
-    if (!currentRecordingId) return;
-
-    try {
-      const result = await audioService.stopRecording();
-      if (!result) {
-        throw new Error('No recording to stop');
+      // Request permissions
+      const { status } = await Audio.requestPermissionsAsync();
+      if (status !== 'granted') {
+        setError('Microphone permission denied');
+        return;
       }
 
-      const recording: Recording = {
-        id: currentRecordingId,
-        timestamp: new Date(),
-        duration: result.duration,
-        fileUri: result.uri,
-        status: 'local',
-        retryCount: 0,
-      };
-
-      await storageService.saveRecording(recording);
-      await queueService.enqueueRecording(recording);
-      
-      // Show success toast
-      Toast.show({
-        type: 'success',
-        text1: 'Recording Saved',
-        text2: `Duration: ${formatDuration(result.duration)}`,
-        position: 'top',
-        visibilityTime: 3000,
+      // Configure audio
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: true,
+        playsInSilentModeIOS: true,
       });
-      
-      setCurrentRecordingId(null);
-      setDuration(0);
-      setIsRecordingState(false);
+
+      // Start recording or mock recording for simulator
+      if (mockAudioService.isSimulator()) {
+        console.log('Starting mock recording on simulator');
+        await mockAudioService.startMockRecording();
+        setIsRecording(true);
+        startTime.current = Date.now();
+      } else {
+        const { recording } = await Audio.Recording.createAsync(
+          Audio.RecordingOptionsPresets.HIGH_QUALITY
+        );
+        
+        recordingRef.current = recording;
+        setIsRecording(true);
+        startTime.current = Date.now();
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to stop recording');
-      setIsRecordingState(false);
+      console.error('Failed to start recording:', err);
+      setError('Failed to start recording');
     }
-  }, [currentRecordingId]);
+  };
+
+  const stopRecording = async () => {
+    try {
+      const recordingDuration = Math.floor((Date.now() - startTime.current) / 1000);
+      let recordingData: Recording;
+
+      if (mockAudioService.isSimulator()) {
+        console.log('Stopping mock recording on simulator');
+        
+        // Create a mock recording
+        const mockFileUri = `${FileSystem.documentDirectory}recordings/mock_${Date.now()}.m4a`;
+        
+        recordingData = {
+          id: generateRecordingId(),
+          timestamp: new Date(),
+          duration: recordingDuration,
+          fileUri: mockFileUri,
+          processingState: 'recorded',
+          processingStep: 0,
+          retryCount: 0,
+          uploadProgress: 0,
+          lastStateChangeAt: new Date(),
+        };
+      } else {
+        if (!recordingRef.current) {
+          throw new Error('No recording in progress');
+        }
+
+        // Stop the actual recording
+        await recordingRef.current.stopAndUnloadAsync();
+        const uri = recordingRef.current.getURI();
+        
+        if (!uri) {
+          throw new Error('Failed to get recording URI');
+        }
+
+        // Get recording status for actual duration
+        const status = await recordingRef.current.getStatusAsync();
+        const actualDuration = Math.floor((status.durationMillis || 0) / 1000);
+
+        // Move file to permanent location
+        const fileName = `recording_${Date.now()}.m4a`;
+        const newUri = `${FileSystem.documentDirectory}recordings/${fileName}`;
+        
+        // Ensure directory exists
+        const dirInfo = await FileSystem.getInfoAsync(`${FileSystem.documentDirectory}recordings/`);
+        if (!dirInfo.exists) {
+          await FileSystem.makeDirectoryAsync(`${FileSystem.documentDirectory}recordings/`, { intermediates: true });
+        }
+        
+        // Move the file
+        await FileSystem.moveAsync({
+          from: uri,
+          to: newUri,
+        });
+
+        recordingData = {
+          id: generateRecordingId(),
+          timestamp: new Date(),
+          duration: actualDuration,
+          fileUri: newUri,
+          processingState: 'recorded',
+          processingStep: 0,
+          retryCount: 0,
+          uploadProgress: 0,
+          lastStateChangeAt: new Date(),
+        };
+      }
+
+      // Save to local storage
+      await storageService.saveRecording(recordingData);
+      
+      // Add to processing queue
+      await queueService.enqueueRecording(recordingData);
+
+      // Reset state
+      setIsRecording(false);
+      recordingRef.current = null;
+    } catch (err) {
+      console.error('Failed to stop recording:', err);
+      setError('Failed to save recording');
+      setIsRecording(false);
+      recordingRef.current = null;
+    }
+  };
 
   return {
-    isRecording: isRecordingState,
-    duration,
+    isRecording,
     error,
     startRecording,
     stopRecording,

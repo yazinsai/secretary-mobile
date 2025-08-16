@@ -1,5 +1,5 @@
-import { StyleSheet, View, Pressable, SectionList, Alert, RefreshControl, Dimensions, Text } from 'react-native';
-import { useState, useEffect, useRef, useCallback, useMemo, memo } from 'react';
+import { StyleSheet, View, Pressable, FlatList, Alert, ListRenderItemInfo } from 'react-native';
+import { useState, useEffect, useRef, useCallback, memo } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, {
   FadeInDown,
@@ -17,27 +17,32 @@ import * as Haptics from 'expo-haptics';
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
 import { UserAvatar } from '@/components/UserAvatar';
+import { ProcessingStateBadge } from '@/components/ProcessingStateBadge';
+import { RecordingTimer } from '@/components/RecordingTimer';
 import { IconSymbol } from '@/components/ui/IconSymbol';
-import { recordingService, MergedRecording } from '@/services/recordingService';
-import { audioService } from '@/services/audio';
-import { formatDuration, groupRecordingsByDate, formatTimeOnly } from '@/utils/helpers';
+import { recordingService } from '@/services/recordingService';
+import { formatDuration, formatTimeOnly } from '@/utils/helpers';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { Colors, Spacing, BorderRadius, Typography } from '@/constants/Colors';
 import { useRecording } from '@/hooks/useRecording';
+import { useAuth } from '@/contexts/AuthContext';
+import { Recording } from '@/types';
+import { realtimeService } from '@/services/realtime';
 
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
 export default function MainScreen() {
   const colorScheme = useColorScheme();
   const theme = Colors[colorScheme ?? 'light'];
   const insets = useSafeAreaInsets();
-  const [recordings, setRecordings] = useState<MergedRecording[]>([]);
-  const [refreshing, setRefreshing] = useState(false);
+  const { user } = useAuth();
+  const [recordings, setRecordings] = useState<Recording[]>([]);
+  const [isInitialLoading, setIsInitialLoading] = useState(true);
+  const [isConnected, setIsConnected] = useState(false);
   const swipeableRefs = useRef<{ [key: string]: Swipeable | null }>({});
   
   // Recording state
-  const { isRecording, duration, error, startRecording, stopRecording } = useRecording();
+  const { isRecording, error, startRecording, stopRecording } = useRecording();
   const [isSaving, setIsSaving] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
   
@@ -46,25 +51,80 @@ export default function MainScreen() {
   const successScale = useSharedValue(0);
 
   useEffect(() => {
-    loadRecordings();
-  }, []);
+    let unsubscribeRecordings: (() => void) | undefined;
+    let unsubscribeConnection: (() => void) | undefined;
+    let isInitialized = false;
 
-  const loadRecordings = async () => {
-    try {
-      const data = await recordingService.getMergedRecordings();
-      setRecordings(data);
-    } catch (error) {
-      console.error('Failed to load recordings:', error);
+    const initializeServices = async () => {
+      if (!user || isInitialized) return;
+      isInitialized = true;
+
+      setIsInitialLoading(true);
+      
+      // Subscribe to recording changes BEFORE initializing to prevent race conditions
+      unsubscribeRecordings = recordingService.onRecordingsChange((updatedRecordings, changeType, changedId) => {
+        console.log(`UI received update: ${changeType} for ${changedId || 'all'}`);
+        
+        // Hide loading state on initial load
+        if (changeType === 'initial') {
+          setIsInitialLoading(false);
+        }
+        
+        setRecordings(prevRecordings => {
+          // Handle different change types
+          switch (changeType) {
+            case 'update': {
+              if (!changedId) return updatedRecordings;
+              // Only update the specific item
+              const index = prevRecordings.findIndex(r => r.id === changedId);
+              if (index === -1) return prevRecordings;
+              const newRecordings = [...prevRecordings];
+              const updatedRecording = updatedRecordings.find(r => r.id === changedId);
+              if (updatedRecording) {
+                newRecordings[index] = updatedRecording;
+              }
+              return newRecordings;
+            }
+            case 'delete': {
+              if (!changedId) return updatedRecordings;
+              return prevRecordings.filter(r => r.id !== changedId);
+            }
+            case 'add': {
+              if (!changedId) return updatedRecordings;
+              const newRecording = updatedRecordings.find(r => r.id === changedId);
+              if (!newRecording) return prevRecordings;
+              return [newRecording, ...prevRecordings];
+            }
+            case 'initial':
+            case 'refresh':
+            default:
+              return updatedRecordings;
+          }
+        });
+      });
+
+      // Small delay to ensure all services are ready, then initialize  
+      await new Promise(resolve => setTimeout(resolve, 500));
+      await recordingService.initialize(user.id);
+
+      // Subscribe to connection state
+      unsubscribeConnection = realtimeService.onConnectionStateChange((connected) => {
+        setIsConnected(connected);
+      });
+    };
+
+    if (user) {
+      initializeServices();
     }
-  };
 
-  const handleRefresh = async () => {
-    setRefreshing(true);
-    await loadRecordings();
-    setRefreshing(false);
-  };
+    // Cleanup
+    return () => {
+      if (unsubscribeRecordings) unsubscribeRecordings();
+      if (unsubscribeConnection) unsubscribeConnection();
+    };
+  }, [user]);
 
-  const handleDelete = useCallback((recording: MergedRecording) => {
+  const handleDelete = useCallback(async (recording: Recording) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     
     Alert.alert(
@@ -79,10 +139,7 @@ export default function MainScreen() {
             try {
               swipeableRefs.current[recording.id]?.close();
               await recordingService.deleteRecording(recording.id);
-              if (recording.source === 'local' || recording.source === 'both') {
-                await audioService.deleteRecording(recording.fileUri);
-              }
-              await loadRecordings();
+              // No need to refresh - realtime will handle it
             } catch (error) {
               Alert.alert('Error', 'Failed to delete recording');
             }
@@ -92,7 +149,18 @@ export default function MainScreen() {
     );
   }, []);
 
-  const handleLongPress = useCallback((recording: MergedRecording) => {
+  const handleRetry = useCallback(async (recording: Recording) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    
+    try {
+      await recordingService.retryRecording(recording.id);
+      // No need to refresh - realtime will handle the update
+    } catch (error) {
+      Alert.alert('Error', 'Failed to retry recording');
+    }
+  }, []);
+
+  const handleLongPress = useCallback((recording: Recording) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     
     const actions = [
@@ -101,14 +169,29 @@ export default function MainScreen() {
         style: 'destructive' as const,
         onPress: () => handleDelete(recording),
       },
-      {
-        text: 'Cancel',
-        style: 'cancel' as const,
-      }
     ];
+
+    // Add retry option if in failed state
+    if (recording.processingState.includes('failed')) {
+      actions.unshift({
+        text: 'Retry',
+        style: 'default' as const,
+        onPress: () => handleRetry(recording),
+      });
+    }
+    
+    actions.push({
+      text: 'Cancel',
+      style: 'cancel' as const,
+    });
     
     Alert.alert('Recording Options', undefined, actions);
-  }, [handleDelete]);
+  }, [handleDelete, handleRetry]);
+
+  // Memoize renderItem to prevent re-creation on every render
+  const renderItem = useCallback(({ item, index }: ListRenderItemInfo<Recording>) => (
+    <RecordingItem item={item} index={index} />
+  ), []);
 
   const handleRecordPressIn = () => {
     buttonScale.value = withSpring(0.88, { 
@@ -149,7 +232,7 @@ export default function MainScreen() {
         setIsSaving(false);
         setShowSuccess(false);
         successScale.value = withSpring(0, { damping: 15, stiffness: 200 });
-        loadRecordings(); // Refresh the list
+        // No need to refresh - realtime will handle new recording
       }, 1800);
     } else {
       await startRecording();
@@ -165,7 +248,7 @@ export default function MainScreen() {
     opacity: interpolate(successScale.value, [0, 0.5, 1], [0, 1, 1]),
   }));
 
-  const renderRightActions = useCallback((recording: MergedRecording) => {
+  const renderRightActions = useCallback((recording: Recording) => {
     return (
       <Animated.View
         entering={FadeInDown}
@@ -181,7 +264,7 @@ export default function MainScreen() {
     );
   }, [theme.error, handleDelete]);
 
-  const RecordingItem = memo(({ item, index }: { item: MergedRecording; index: number }) => {
+  const RecordingItem = memo(function RecordingItem({ item, index }: { item: Recording; index: number }) {
     const scale = useSharedValue(1);
 
     const animatedStyle = useAnimatedStyle(() => ({
@@ -241,52 +324,29 @@ export default function MainScreen() {
                   </ThemedText>
                 )}
 
-                {/* Status Indicators */}
-                <View style={styles.statusRow}>
-                  {item.status !== 'uploaded' && (
-                    <View style={[styles.statusBadge, { backgroundColor: theme.backgroundSecondary }]}>
-                      <IconSymbol
-                        name={item.status === 'uploading' ? 'arrow.up.circle' : 'exclamationmark.circle'}
-                        size={12}
-                        color={item.status === 'uploading' ? theme.primary : theme.error}
-                      />
-                      <ThemedText style={[styles.statusText, { color: theme.textSecondary }]}>
-                        {item.status}
-                      </ThemedText>
-                    </View>
-                  )}
-                  
-                  {item.source === 'local' && item.syncStatus !== 'synced' && (
-                    <IconSymbol name="wifi.slash" size={14} color={theme.textSecondary} />
-                  )}
-                  
-                  {item.webhookStatus === 'failed' && (
-                    <View style={[styles.webhookDot, { backgroundColor: theme.error }]} />
-                  )}
-                </View>
+                {/* Processing State Badge */}
+                <ProcessingStateBadge 
+                  recording={item} 
+                  onRetry={item.processingState.includes('failed') ? () => handleRetry(item) : undefined}
+                />
               </View>
             </View>
           </AnimatedPressable>
         </Swipeable>
       </Animated.View>
     );
+  }, (prevProps, nextProps) => {
+    // Custom comparison for memo - only re-render if the recording data actually changed
+    return (
+      prevProps.item.id === nextProps.item.id &&
+      prevProps.item.processingState === nextProps.item.processingState &&
+      prevProps.item.transcript === nextProps.item.transcript &&
+      prevProps.item.title === nextProps.item.title &&
+      prevProps.item.uploadProgress === nextProps.item.uploadProgress &&
+      prevProps.index === nextProps.index
+    );
   });
 
-  const sections = useMemo(() => {
-    return groupRecordingsByDate(recordings);
-  }, [recordings]);
-
-  const renderItem = useCallback(({ item, index }: { item: MergedRecording; index: number }) => (
-    <RecordingItem item={item} index={index} />
-  ), []);
-
-  const renderSectionHeader = useCallback(({ section: { date } }: any) => (
-    <View style={[styles.sectionHeader, { backgroundColor: theme.background }]}>
-      <ThemedText style={[styles.sectionTitle, { color: theme.textSecondary }]}>
-        {date}
-      </ThemedText>
-    </View>
-  ), [theme.background, theme.textSecondary]);
 
   return (
     <ThemedView style={styles.container}>
@@ -296,12 +356,20 @@ export default function MainScreen() {
           <Animated.View entering={FadeInDown}>
             <ThemedText type="title" style={styles.title}>Recordings</ThemedText>
           </Animated.View>
-          <UserAvatar />
+          <View style={styles.headerRight}>
+            {/* Connection Indicator */}
+            <View style={[styles.connectionIndicator, { backgroundColor: isConnected ? theme.success : theme.textSecondary }]} />
+            <UserAvatar />
+          </View>
         </View>
       </View>
       
       {/* Recordings List */}
-      {recordings.length === 0 ? (
+      {isInitialLoading ? (
+        <View style={styles.loadingContainer}>
+          <ThemedText style={styles.loadingText}>Loading recordings...</ThemedText>
+        </View>
+      ) : recordings.length === 0 ? (
         <Animated.View
           entering={FadeInDown.delay(200)}
           style={styles.emptyState}
@@ -321,43 +389,27 @@ export default function MainScreen() {
           </ThemedText>
         </Animated.View>
       ) : (
-        <SectionList
-          sections={sections}
+        <FlatList
+          data={recordings}
           keyExtractor={(item) => item.id}
           renderItem={renderItem}
-          renderSectionHeader={renderSectionHeader}
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={handleRefresh}
-              tintColor={theme.primary}
-            />
-          }
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
-          stickySectionHeadersEnabled={true}
+          removeClippedSubviews={true}
+          maxToRenderPerBatch={10}
+          windowSize={10}
+          updateCellsBatchingPeriod={50}
+          initialNumToRender={10}
+          getItemLayout={(data, index) => ({
+            length: 100, // Approximate height of each item
+            offset: 100 * index,
+            index,
+          })}
         />
       )}
 
       {/* Recording Timer Overlay */}
-      {isRecording && (
-        <Animated.View 
-          entering={FadeInDown}
-          style={[styles.recordingOverlay, { backgroundColor: theme.overlay }]}
-        >
-          <View style={[styles.timerCard, { backgroundColor: theme.card }]}>
-            <View style={styles.pulseIndicator}>
-              <View style={[styles.pulseDot, { backgroundColor: theme.error }]} />
-            </View>
-            <Text style={[styles.timerText, { color: theme.text }]}>
-              {Math.floor(duration / 60)}:{(duration % 60).toString().padStart(2, '0')}
-            </Text>
-            <Text style={[styles.recordingLabel, { color: theme.textSecondary }]}>
-              Recording...
-            </Text>
-          </View>
-        </Animated.View>
-      )}
+      <RecordingTimer isRecording={isRecording} initialDuration={0} />
 
       {/* Success Message */}
       {showSuccess && (
@@ -425,32 +477,29 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
   },
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+  },
+  connectionIndicator: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
   title: {
     fontSize: Typography.sizes.xxxl,
     fontWeight: Typography.weights.bold,
     lineHeight: Typography.sizes.xxxl * 1.3,
   },
-  sectionHeader: {
-    paddingHorizontal: Spacing.xl,
-    paddingVertical: Spacing.sm,
-    paddingTop: Spacing.md,
-  },
-  sectionTitle: {
-    fontSize: Typography.sizes.xs,
-    fontWeight: Typography.weights.semibold,
-    letterSpacing: 0.5,
-    textTransform: 'uppercase',
-  },
   listContent: {
-    paddingBottom: 120, // Space for the record button
+    paddingHorizontal: Spacing.xl,
+    paddingBottom: 120,
   },
   recordingItemContainer: {
-    paddingHorizontal: Spacing.xl,
-    marginBottom: Spacing.xs,
+    marginBottom: Spacing.md,
   },
   recordingCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
     padding: Spacing.md,
     borderRadius: BorderRadius.md,
   },
@@ -480,31 +529,9 @@ const styles = StyleSheet.create({
     lineHeight: Typography.sizes.sm * 1.4,
     marginBottom: Spacing.xs,
   },
-  statusRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
-  },
-  statusBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: Spacing.sm,
-    paddingVertical: 2,
-    borderRadius: BorderRadius.sm,
-    gap: Spacing.xs,
-  },
-  statusText: {
-    fontSize: Typography.sizes.xs,
-    textTransform: 'capitalize',
-  },
-  webhookDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-  },
   deleteAction: {
     justifyContent: 'center',
-    marginBottom: Spacing.xs,
+    marginBottom: Spacing.md,
   },
   deleteButton: {
     width: 70,
@@ -556,49 +583,6 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.25,
     shadowRadius: 12,
   },
-  recordingOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  timerCard: {
-    paddingVertical: Spacing.xxl,
-    paddingHorizontal: Spacing.xxxl,
-    borderRadius: BorderRadius.xxl,
-    alignItems: 'center',
-    elevation: 8,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
-  },
-  timerText: {
-    fontSize: Typography.sizes.huge,
-    lineHeight: Typography.sizes.huge * 1.2,
-    fontWeight: Typography.weights.bold,
-    marginTop: Spacing.lg,
-  },
-  recordingLabel: {
-    fontSize: Typography.sizes.sm,
-    marginTop: Spacing.sm,
-    letterSpacing: 0.5,
-  },
-  pulseIndicator: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  pulseDot: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-  },
   successOverlay: {
     position: 'absolute',
     top: '40%',
@@ -639,5 +623,14 @@ const styles = StyleSheet.create({
   errorText: {
     flex: 1,
     fontSize: Typography.sizes.sm,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    fontSize: Typography.sizes.lg,
+    opacity: 0.6,
   },
 });
