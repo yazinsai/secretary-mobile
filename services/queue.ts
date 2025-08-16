@@ -61,51 +61,65 @@ class QueueService {
 
   async enqueueRecording(recording: Recording): Promise<void> {
     try {
-      const client = await supabaseService.getClient();
-      const { data: { user } } = await client.auth.getUser();
-      
-      if (!user) {
-        throw new Error('User not authenticated');
-      }
+      // Always update local storage first (offline-first approach)
+      await storageService.updateRecording(recording.id, {
+        processingState: 'recorded',
+        syncStatus: 'local' // Start as local, will become syncing when online
+      });
 
-      // Create database record with initial state
-      const { error } = await client
-        .from('recordings')
-        .insert({
-          id: recording.id,
-          user_id: user.id,
-          timestamp: recording.timestamp.toISOString(),
-          duration: recording.duration,
-          processing_state: 'recorded',
-          processing_step: 0,
-          retry_count: 0,
-          upload_progress: 0,
-          status: 'local', // Legacy field for backward compatibility
-          webhook_status: null,
-          error: null
-        });
-
-      if (error) {
-        console.error('Failed to create recording in database:', error);
-        throw error;
-      }
-
-      // Add to processing queue
+      // Add to processing queue for when we're online
       this.processingQueue.set(recording.id, {
         recordingId: recording.id,
         currentStep: 'recorded'
       });
 
-      // Update local storage to track it's been queued
-      await storageService.updateRecording(recording.id, {
-        processingState: 'recorded',
-        syncStatus: 'syncing'
-      });
+      // Check if online and create database record if possible
+      const netInfo = await NetInfo.fetch();
+      if (netInfo.isConnected) {
+        try {
+          const client = await supabaseService.getClient();
+          const { data: { user } } = await client.auth.getUser();
+          
+          if (user) {
+            // Create database record with initial state
+            const { error } = await client
+              .from('recordings')
+              .insert({
+                id: recording.id,
+                user_id: user.id,
+                timestamp: recording.timestamp.toISOString(),
+                duration: recording.duration,
+                processing_state: 'recorded',
+                processing_step: 0,
+                retry_count: 0,
+                upload_progress: 0,
+                status: 'local', // Legacy field for backward compatibility
+                webhook_status: null,
+                error: null
+              });
 
-      // Trigger processing
-      this.processQueue();
+            if (!error) {
+              // Successfully created in DB, update local status
+              await storageService.updateRecording(recording.id, {
+                syncStatus: 'syncing'
+              });
+              
+              console.log(`Recording ${recording.id} queued and synced to database`);
+              
+              // Trigger immediate processing since we're online
+              this.processQueue();
+            } else {
+              console.warn('Failed to create recording in database, will retry when online:', error);
+            }
+          }
+        } catch (error) {
+          console.warn('Failed to sync recording to database, will retry when online:', error);
+        }
+      } else {
+        console.log(`Recording ${recording.id} queued locally, will sync when online`);
+      }
     } catch (error) {
-      console.error('Failed to enqueue recording:', error);
+      console.error('Failed to enqueue recording locally:', error);
       throw error;
     }
   }
@@ -126,6 +140,9 @@ class QueueService {
         console.log('User not authenticated, skipping queue processing');
         return;
       }
+
+      // First, sync any offline recordings to database
+      await this.syncOfflineRecordings(user.id, client);
 
       // Get recordings that need processing
       const { data: recordings, error } = await client
@@ -151,6 +168,62 @@ class QueueService {
       console.error('Queue processing error:', error);
     } finally {
       this.isProcessing = false;
+    }
+  }
+
+  private async syncOfflineRecordings(userId: string, client: any): Promise<void> {
+    try {
+      // Get all local recordings that haven't been synced
+      const localRecordings = await storageService.getRecordings();
+      const unsynced = localRecordings.filter(r => 
+        r.syncStatus === 'local' && r.processingState === 'recorded'
+      );
+
+      for (const localRecording of unsynced) {
+        try {
+          // Check if it already exists in database
+          const { data: existing } = await client
+            .from('recordings')
+            .select('id')
+            .eq('id', localRecording.id)
+            .single();
+
+          if (!existing) {
+            // Create new database record
+            const { error } = await client
+              .from('recordings')
+              .insert({
+                id: localRecording.id,
+                user_id: userId,
+                timestamp: localRecording.timestamp.toISOString(),
+                duration: localRecording.duration,
+                processing_state: 'recorded',
+                processing_step: 0,
+                retry_count: 0,
+                upload_progress: 0,
+                status: 'local',
+                webhook_status: null,
+                error: null
+              });
+
+            if (error) {
+              console.warn(`Failed to sync offline recording ${localRecording.id}:`, error);
+              continue;
+            }
+          }
+
+          // Update local sync status
+          await storageService.updateRecording(localRecording.id, {
+            syncStatus: 'syncing'
+          });
+
+          console.log(`Synced offline recording ${localRecording.id} to database`);
+        } catch (error) {
+          console.warn(`Error syncing recording ${localRecording.id}:`, error);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to sync offline recordings:', error);
     }
   }
 
