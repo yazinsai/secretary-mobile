@@ -1,5 +1,5 @@
-import { StyleSheet, View, Pressable, FlatList, Alert, ListRenderItemInfo } from 'react-native';
-import { useState, useEffect, useRef, useCallback, memo } from 'react';
+import { StyleSheet, View, Pressable, SectionList, Alert } from 'react-native';
+import { useState, useEffect, useRef, useCallback, memo, useMemo } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, {
   FadeInDown,
@@ -10,9 +10,11 @@ import Animated, {
   useSharedValue,
   withSpring,
   withSequence,
+  withTiming,
   interpolate,
+  runOnJS,
 } from 'react-native-reanimated';
-import { Swipeable } from 'react-native-gesture-handler';
+
 import * as Haptics from 'expo-haptics';
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
@@ -31,6 +33,30 @@ import { realtimeService } from '@/services/realtime';
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
+// Date formatting utility
+const formatDateHeader = (date: Date): string => {
+  const today = new Date();
+  const yesterday = new Date(today);
+  yesterday.setDate(yesterday.getDate() - 1);
+  
+  const isToday = date.toDateString() === today.toDateString();
+  const isYesterday = date.toDateString() === yesterday.toDateString();
+  
+  if (isToday) return 'Today';
+  if (isYesterday) return 'Yesterday';
+  
+  // For other dates, show relative or absolute date
+  const diffDays = Math.floor((today.getTime() - date.getTime()) / (1000 * 60 * 60 * 24));
+  
+  if (diffDays < 7) {
+    return date.toLocaleDateString('en-US', { weekday: 'long' });
+  } else if (date.getFullYear() === today.getFullYear()) {
+    return date.toLocaleDateString('en-US', { month: 'long', day: 'numeric' });
+  } else {
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  }
+};
+
 export default function MainScreen() {
   const colorScheme = useColorScheme();
   const theme = Colors[colorScheme ?? 'light'];
@@ -39,7 +65,30 @@ export default function MainScreen() {
   const [recordings, setRecordings] = useState<Recording[]>([]);
   const [isInitialLoading, setIsInitialLoading] = useState(true);
   const [isConnected, setIsConnected] = useState(false);
-  const swipeableRefs = useRef<{ [key: string]: Swipeable | null }>({});
+
+  // Group recordings by date
+  const groupedRecordings = useMemo(() => {
+    const groups: { [key: string]: Recording[] } = {};
+    
+    recordings.forEach(recording => {
+      const date = new Date(recording.timestamp);
+      const dateKey = date.toDateString(); // e.g., "Mon Dec 25 2023"
+      
+      if (!groups[dateKey]) {
+        groups[dateKey] = [];
+      }
+      groups[dateKey].push(recording);
+    });
+
+    // Convert to section list format and sort by date (newest first)
+    return Object.keys(groups)
+      .sort((a, b) => new Date(b).getTime() - new Date(a).getTime())
+      .map(dateKey => ({
+        title: formatDateHeader(new Date(dateKey)),
+        data: groups[dateKey].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+      }));
+  }, [recordings]);
+
   
   // Recording state
   const { isRecording, error, startRecording, stopRecording } = useRecording();
@@ -49,6 +98,12 @@ export default function MainScreen() {
   // Animation values
   const buttonScale = useSharedValue(1);
   const successScale = useSharedValue(0);
+  
+  // Header scroll animations
+  const scrollY = useSharedValue(0);
+  const headerOpacity = useSharedValue(1);
+  const headerTranslateY = useSharedValue(0);
+  const lastScrollY = useSharedValue(0);
 
   useEffect(() => {
     let unsubscribeRecordings: (() => void) | undefined;
@@ -137,7 +192,6 @@ export default function MainScreen() {
           style: 'destructive',
           onPress: async () => {
             try {
-              swipeableRefs.current[recording.id]?.close();
               await recordingService.deleteRecording(recording.id);
               // No need to refresh - realtime will handle it
             } catch (error) {
@@ -188,8 +242,17 @@ export default function MainScreen() {
     Alert.alert('Recording Options', undefined, actions);
   }, [handleDelete, handleRetry]);
 
-  // Memoize renderItem to prevent re-creation on every render
-  const renderItem = useCallback(({ item, index }: ListRenderItemInfo<Recording>) => (
+  // Render section header
+  const renderSectionHeader = useCallback(({ section: { title } }: { section: { title: string } }) => (
+    <View style={[styles.sectionHeader, { backgroundColor: theme.background }]}>
+      <ThemedText style={[styles.sectionHeaderText, { color: theme.textSecondary }]}>
+        {title}
+      </ThemedText>
+    </View>
+  ), [theme]);
+
+  // Memoize renderItem to work with sections
+  const renderItem = useCallback(({ item, index }: { item: Recording; index: number }) => (
     <RecordingItem item={item} index={index} />
   ), []);
 
@@ -248,21 +311,34 @@ export default function MainScreen() {
     opacity: interpolate(successScale.value, [0, 0.5, 1], [0, 1, 1]),
   }));
 
-  const renderRightActions = useCallback((recording: Recording) => {
-    return (
-      <Animated.View
-        entering={FadeInDown}
-        style={styles.deleteAction}
-      >
-        <Pressable
-          style={[styles.deleteButton, { backgroundColor: theme.error }]}
-          onPress={() => handleDelete(recording)}
-        >
-          <IconSymbol name="trash" size={20} color={theme.accent} />
-        </Pressable>
-      </Animated.View>
-    );
-  }, [theme.error, handleDelete]);
+  // Header scroll animation
+  const headerAnimatedStyle = useAnimatedStyle(() => ({
+    opacity: headerOpacity.value,
+    transform: [{ translateY: headerTranslateY.value }],
+  }));
+
+  // Scroll handler for header animation
+  const handleScroll = useCallback((event: any) => {
+    'worklet';
+    const currentScrollY = event.nativeEvent.contentOffset.y;
+    const scrollDiff = currentScrollY - lastScrollY.value;
+    
+    // Only trigger animation if scroll distance is significant
+    if (Math.abs(scrollDiff) > 5) {
+      if (scrollDiff > 0 && currentScrollY > 50) {
+        // Scrolling down - hide header
+        headerOpacity.value = withTiming(0, { duration: 200 });
+        headerTranslateY.value = withTiming(-60, { duration: 200 });
+      } else if (scrollDiff < 0) {
+        // Scrolling up - show header
+        headerOpacity.value = withTiming(1, { duration: 200 });
+        headerTranslateY.value = withTiming(0, { duration: 200 });
+      }
+    }
+    
+    lastScrollY.value = currentScrollY;
+  }, []);
+
 
   const RecordingItem = memo(function RecordingItem({ item, index }: { item: Recording; index: number }) {
     const scale = useSharedValue(1);
@@ -287,52 +363,53 @@ export default function MainScreen() {
         exiting={SlideOutLeft}
         layout={Layout.springify()}
       >
-        <Swipeable
-          ref={(ref) => { swipeableRefs.current[item.id] = ref; }}
-          renderRightActions={() => renderRightActions(item)}
-          rightThreshold={40}
+        <AnimatedPressable
+          onPressIn={handlePressIn}
+          onPressOut={handlePressOut}
+          onLongPress={() => handleLongPress(item)}
+          style={[animatedStyle, styles.recordingItemContainer]}
         >
-          <AnimatedPressable
-            onPressIn={handlePressIn}
-            onPressOut={handlePressOut}
-            onLongPress={() => handleLongPress(item)}
-            style={[animatedStyle, styles.recordingItemContainer]}
-          >
-            <View style={[styles.recordingCard, { backgroundColor: theme.card }]}>
-              <View style={styles.recordingContent}>
-                <View style={styles.recordingHeader}>
-                  <ThemedText style={styles.recordingTime}>
-                    {formatTimeOnly(item.timestamp)}
-                  </ThemedText>
-                  <ThemedText style={[styles.recordingDuration, { color: theme.textSecondary }]}>
-                    {formatDuration(item.duration)}
-                  </ThemedText>
+          <View style={[styles.recordingCard, { backgroundColor: theme.card }]}>
+            <View style={styles.recordingContent}>
+              <View style={styles.recordingHeader}>
+                <View style={styles.recordingHeaderLeft}>
+                  {item.title ? (
+                    <>
+                      <ThemedText style={styles.recordingTitle} numberOfLines={1}>
+                        {item.title}
+                      </ThemedText>
+                      <ThemedText style={[styles.recordingTime, { color: theme.textSecondary }]}>
+                        {formatTimeOnly(item.timestamp)}
+                      </ThemedText>
+                    </>
+                  ) : (
+                    <ThemedText style={styles.recordingTime}>
+                      {formatTimeOnly(item.timestamp)}
+                    </ThemedText>
+                  )}
                 </View>
-                
-                {item.title && (
-                  <ThemedText style={styles.recordingTitle} numberOfLines={1}>
-                    {item.title}
-                  </ThemedText>
-                )}
-                
-                {item.transcript && (
-                  <ThemedText 
-                    style={[styles.recordingTranscript, { color: theme.textSecondary }]} 
-                    numberOfLines={2}
-                  >
-                    {item.transcript}
-                  </ThemedText>
-                )}
-
-                {/* Processing State Badge */}
-                <ProcessingStateBadge 
-                  recording={item} 
-                  onRetry={item.processingState.includes('failed') ? () => handleRetry(item) : undefined}
-                />
+                <ThemedText style={[styles.recordingDuration, { color: theme.textSecondary }]}>
+                  {formatDuration(item.duration)}
+                </ThemedText>
               </View>
+              
+              {item.transcript && (
+                <ThemedText 
+                  style={[styles.recordingTranscript, { color: theme.textSecondary }]} 
+                  numberOfLines={3}
+                >
+                  {item.transcript}
+                </ThemedText>
+              )}
+
+              {/* Processing State Badge */}
+              <ProcessingStateBadge 
+                recording={item} 
+                onRetry={item.processingState.includes('failed') ? () => handleRetry(item) : undefined}
+              />
             </View>
-          </AnimatedPressable>
-        </Swipeable>
+          </View>
+        </AnimatedPressable>
       </Animated.View>
     );
   }, (prevProps, nextProps) => {
@@ -351,7 +428,16 @@ export default function MainScreen() {
   return (
     <ThemedView style={styles.container}>
       {/* Header */}
-      <View style={[styles.header, { paddingTop: insets.top + Spacing.md }]}>
+      <Animated.View 
+        style={[
+          styles.header, 
+          { 
+            paddingTop: insets.top + Spacing.md,
+            backgroundColor: theme.background + 'F0', // Semi-transparent background
+          },
+          headerAnimatedStyle
+        ]}
+      >
         <View style={styles.headerContent}>
           <Animated.View entering={FadeInDown}>
             <ThemedText type="title" style={styles.title}>Recordings</ThemedText>
@@ -362,14 +448,14 @@ export default function MainScreen() {
             <UserAvatar />
           </View>
         </View>
-      </View>
+      </Animated.View>
       
       {/* Recordings List */}
       {isInitialLoading ? (
         <View style={styles.loadingContainer}>
           <ThemedText style={styles.loadingText}>Loading recordings...</ThemedText>
         </View>
-      ) : recordings.length === 0 ? (
+      ) : groupedRecordings.length === 0 ? (
         <Animated.View
           entering={FadeInDown.delay(200)}
           style={styles.emptyState}
@@ -389,22 +475,21 @@ export default function MainScreen() {
           </ThemedText>
         </Animated.View>
       ) : (
-        <FlatList
-          data={recordings}
+        <SectionList
+          sections={groupedRecordings}
           keyExtractor={(item) => item.id}
           renderItem={renderItem}
-          contentContainerStyle={styles.listContent}
+          renderSectionHeader={renderSectionHeader}
+          contentContainerStyle={[styles.listContent, { paddingTop: insets.top + 100 }]}
           showsVerticalScrollIndicator={false}
           removeClippedSubviews={true}
           maxToRenderPerBatch={10}
           windowSize={10}
           updateCellsBatchingPeriod={50}
           initialNumToRender={10}
-          getItemLayout={(data, index) => ({
-            length: 100, // Approximate height of each item
-            offset: 100 * index,
-            index,
-          })}
+          stickySectionHeadersEnabled={true}
+          onScroll={handleScroll}
+          scrollEventThrottle={16}
         />
       )}
 
@@ -469,6 +554,11 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   header: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 1000,
     paddingHorizontal: Spacing.xl,
     paddingBottom: Spacing.md,
   },
@@ -509,37 +599,41 @@ const styles = StyleSheet.create({
   recordingHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: Spacing.xs,
+    alignItems: 'flex-start',
+    marginBottom: Spacing.sm,
+  },
+  recordingHeaderLeft: {
+    flex: 1,
+    marginRight: Spacing.sm,
   },
   recordingTime: {
     fontSize: Typography.sizes.sm,
-    fontWeight: Typography.weights.semibold,
+    fontWeight: Typography.weights.medium,
   },
   recordingDuration: {
     fontSize: Typography.sizes.xs,
+    fontWeight: Typography.weights.medium,
   },
   recordingTitle: {
-    fontSize: Typography.sizes.base,
-    fontWeight: Typography.weights.medium,
-    marginBottom: Spacing.xs,
+    fontSize: Typography.sizes.lg,
+    fontWeight: Typography.weights.semibold,
+    marginBottom: 2,
   },
   recordingTranscript: {
     fontSize: Typography.sizes.sm,
     lineHeight: Typography.sizes.sm * 1.4,
     marginBottom: Spacing.xs,
   },
-  deleteAction: {
-    justifyContent: 'center',
-    marginBottom: Spacing.md,
+  sectionHeader: {
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.sm,
+    marginTop: Spacing.md,
   },
-  deleteButton: {
-    width: 70,
-    height: '100%',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderTopRightRadius: BorderRadius.md,
-    borderBottomRightRadius: BorderRadius.md,
+  sectionHeaderText: {
+    fontSize: Typography.sizes.sm,
+    fontWeight: Typography.weights.semibold,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   emptyState: {
     flex: 1,
