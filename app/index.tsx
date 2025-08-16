@@ -93,6 +93,7 @@ export default function MainScreen() {
   const { isRecording, error, startRecording, stopRecording } = useRecording();
   const [isSaving, setIsSaving] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
+  const [expandedTranscripts, setExpandedTranscripts] = useState<Set<string>>(new Set());
   
   // Animation values
   const buttonScale = useSharedValue(1);
@@ -365,6 +366,17 @@ export default function MainScreen() {
         <AnimatedPressable
           onPressIn={handlePressIn}
           onPressOut={handlePressOut}
+          onPress={() => {
+            setExpandedTranscripts(prev => {
+              const newSet = new Set(prev);
+              if (newSet.has(item.id)) {
+                newSet.delete(item.id);
+              } else {
+                newSet.add(item.id);
+              }
+              return newSet;
+            });
+          }}
           onLongPress={() => handleLongPress(item)}
           style={[animatedStyle, styles.recordingItemContainer]}
         >
@@ -395,7 +407,7 @@ export default function MainScreen() {
               {item.transcript && (
                 <ThemedText 
                   style={[styles.recordingTranscript, { color: theme.textSecondary }]} 
-                  numberOfLines={3}
+                  numberOfLines={expandedTranscripts.has(item.id) ? undefined : 3}
                 >
                   {item.transcript}
                 </ThemedText>
