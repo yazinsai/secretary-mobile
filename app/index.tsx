@@ -258,7 +258,7 @@ export default function MainScreen() {
           style={[styles.deleteButton, { backgroundColor: theme.error }]}
           onPress={() => handleDelete(recording)}
         >
-          <IconSymbol name="trash" size={20} color="white" />
+          <IconSymbol name="trash" size={20} color={theme.accent} />
         </Pressable>
       </Animated.View>
     );

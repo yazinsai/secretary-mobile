@@ -64,7 +64,7 @@ export function DictionaryInput({ value, onChange, placeholder = "Add a term..."
             style={[styles.addButton, { backgroundColor: theme.primary }]}
             onPress={handleAdd}
           >
-            <IconSymbol name="plus" size={20} color="white" />
+            <IconSymbol name="plus" size={20} color={theme.accent} />
           </Pressable>
         )}
       </View>

@@ -48,7 +48,7 @@ export const Colors = {
     primary: '#6B68FF',           // Bright purple for dark mode
     primaryLight: '#2A2A4D',      // Dark purple for backgrounds
     primaryDark: '#8B88FF',       // Brighter purple for emphasis
-    accent: '#6B68FF',            // Purple accent
+    accent: '#FFFFFF',            // White accent for contrast
     
     // Base colors
     text: '#FFFFFF',              // White text

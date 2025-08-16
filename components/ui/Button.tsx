@@ -133,7 +133,7 @@ export function Button({
 
     const variantStyles: Record<string, TextStyle> = {
       primary: {
-        color: '#FFFFFF',
+        color: theme.accent,
       },
       secondary: {
         color: theme.text,
