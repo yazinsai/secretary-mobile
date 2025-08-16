@@ -15,7 +15,7 @@ import 'react-native-reanimated';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import Toast from 'react-native-toast-message';
 
-import { useColorScheme } from '@/hooks/useColorScheme';
+// import { useColorScheme } from '@/hooks/useColorScheme'; // Unused - forcing dark mode
 import { Colors } from '@/constants/Colors';
 import { queueService } from '@/services/queue';
 import { syncService } from '@/services/sync';
@@ -50,7 +50,8 @@ const CustomDarkTheme: Theme = {
 };
 
 function RootLayoutNav() {
-  const colorScheme = useColorScheme();
+  // Force dark mode because light mode is shit lol 
+  const colorScheme = 'dark';
   const segments = useSegments();
   const router = useRouter();
   const { user, loading } = useAuth();
@@ -84,7 +85,7 @@ function RootLayoutNav() {
         <Stack.Screen name="auth/signup" options={{ headerShown: false }} />
         <Stack.Screen name="auth/forgot-password" options={{ headerShown: false }} />
       </Stack>
-      <StatusBar style="auto" />
+      <StatusBar style="light" />
       <Toast config={toastConfig} />
     </ThemeProvider>
   );

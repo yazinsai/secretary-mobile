@@ -4,27 +4,27 @@
 
 export const Colors = {
   light: {
-    // Primary colors - Purple/Violet theme
-    primary: '#2B28D7',           // Strong purple with proper contrast (WCAG AA compliant)
-    primaryLight: '#EDEDFD',      // Light purple for backgrounds
-    primaryDark: '#1A189E',       // Darker purple for emphasis
-    accent: '#FFFFFF',            // White accent for contrast
+    // Primary colors - Purple/Violet theme (improved)
+    primary: '#6B68FF',           // Brighter, more modern purple
+    primaryLight: '#F0F0FF',      // Very light purple for backgrounds
+    primaryDark: '#4F4CFF',       // Slightly darker purple for emphasis
+    accent: '#000000',            // Black accent for better contrast
     
-    // Base colors
-    text: '#1A1A2E',              // Very dark blue-black for text
-    textSecondary: '#5D5D7A',     // Medium gray-purple for secondary text
-    textMuted: '#8B8BA3',         // Muted text
-    background: '#FFFFFF',        // Pure white background
-    backgroundSecondary: '#F7F7FD', // Slight purple tinted background
-    backgroundElevated: '#FAFAFF', // Elevated surface
+    // Base colors (more modern, less harsh)
+    text: '#000000',              // Pure black for maximum readability
+    textSecondary: '#666666',     // Softer gray for secondary text
+    textMuted: '#999999',         // Muted text
+    background: '#F8F9FA',        // Off-white background (easier on eyes)
+    backgroundSecondary: '#F0F1F3', // Subtle gray background
+    backgroundElevated: '#FFFFFF', // Pure white for elevation
     
-    // UI colors
-    card: '#FFFFFF',              // White cards
-    cardHover: '#F7F7FD',         // Card hover state
-    cardBorder: '#E8E8F5',        // Subtle purple-gray border
-    inputBackground: '#F7F7FD',   // Light purple-gray input background
-    inputBorder: '#D4D4ED',       // Purple-gray border
-    inputBorderFocus: '#2B28D7',  // Purple focus border
+    // UI colors (improved contrast and modernity)
+    card: '#FFFFFF',              // White cards with shadows
+    cardHover: '#F8F9FA',         // Light gray hover state
+    cardBorder: '#E9ECEF',        // Neutral gray border
+    inputBackground: '#F8F9FA',   // Light gray input background
+    inputBorder: '#DEE2E6',       // Neutral border
+    inputBorderFocus: '#6B68FF',  // Purple focus border
     
     // Status colors
     success: '#22C55E',           // Green
@@ -32,16 +32,16 @@ export const Colors = {
     warning: '#FFB400',           // Orange
     info: '#00A9FF',              // Blue
     
-    // Navigation
-    tabIconDefault: '#8B8BA3',    // Muted icon
-    tabIconSelected: '#2B28D7',   // Purple selected
+    // Navigation (updated to match new scheme)
+    tabIconDefault: '#999999',    // Muted gray icon
+    tabIconSelected: '#6B68FF',   // Purple selected
     
-    // Additional
-    divider: '#E8E8F5',
-    overlay: 'rgba(26, 26, 46, 0.5)',
+    // Additional (updated for better contrast)
+    divider: '#E9ECEF',
+    overlay: 'rgba(0, 0, 0, 0.4)',
     
-    // Shadows
-    shadow: 'rgba(26, 26, 46, 0.08)',
+    // Shadows (more neutral)
+    shadow: 'rgba(0, 0, 0, 0.1)',
   },
   dark: {
     // Primary colors - Purple adapted for dark mode

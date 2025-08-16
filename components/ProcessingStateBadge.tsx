@@ -53,11 +53,6 @@ export function ProcessingStateBadge({ recording, onRetry }: ProcessingStateBadg
 
   const stateInfo = getStateDisplay(recording.processingState);
 
-  // Don't show badge for completed recordings
-  if (recording.processingState === 'completed') {
-    return null;
-  }
-
   const pulseStyle = useAnimatedStyle(() => {
     if (!stateInfo.showProgress) return {};
     
@@ -72,6 +67,11 @@ export function ProcessingStateBadge({ recording, onRetry }: ProcessingStateBadg
       ),
     };
   });
+
+  // Don't show badge for completed recordings
+  if (recording.processingState === 'completed') {
+    return null;
+  }
 
   return (
     <Animated.View 

@@ -1,5 +1,5 @@
 import { StyleSheet, View, Pressable, SectionList, Alert } from 'react-native';
-import { useState, useEffect, useRef, useCallback, memo, useMemo } from 'react';
+import { useState, useEffect, useCallback, memo, useMemo } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, {
   FadeInDown,
@@ -12,7 +12,6 @@ import Animated, {
   withSequence,
   withTiming,
   interpolate,
-  runOnJS,
 } from 'react-native-reanimated';
 
 import * as Haptics from 'expo-haptics';
