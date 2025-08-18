@@ -15,6 +15,7 @@ export function Input({
   error,
   helperText,
   containerStyle,
+  style,
   ...props
 }: InputProps) {
   const colorScheme = useColorScheme();
@@ -35,7 +36,8 @@ export function Input({
             backgroundColor: theme.inputBackground,
             borderColor: error ? theme.error : theme.inputBorder,
             color: theme.text,
-          }
+          },
+          style
         ]}
         placeholderTextColor={theme.textSecondary}
         {...props}
